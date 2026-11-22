@@ -563,32 +563,43 @@ impl TaffyLayoutEngine {
             self.taffy.compute_layout_with_measure(
                 id.into(),
                 available_space.into(),
-                |known_dimensions, available_space, _id, node_context, _style| {
-                    let Some(node_context) = node_context else {
-                        return taffy::geometry::Size::default();
-                    };
-
-                    let known_dimensions = Size {
-                        width: known_dimensions.width.map(|e| Pixels(e / scale_factor)),
-                        height: known_dimensions.height.map(|e| Pixels(e / scale_factor)),
-                    };
-
-                    let available_space: Size<AvailableSpace> = available_space.into();
-                    let untransform = |ev: AvailableSpace| match ev {
-                        AvailableSpace::Definite(pixels) => {
-                            AvailableSpace::Definite(Pixels(pixels.0 / scale_factor))
-                        }
-                        AvailableSpace::MinContent => AvailableSpace::MinContent,
-                        AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-                    };
-                    let available_space = size(
-                        untransform(available_space.width),
-                        untransform(available_space.height),
-                    );
-
-                    let measured_size: Size<Pixels> =
-                        (node_context.measure)(known_dimensions, available_space, window, cx);
-                    snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
+                |inputs: taffy::tree::LayoutInput,
+                 _node_id,
+                 node_context: Option<&mut NodeContext>,
+                 style: &taffy::style::Style| {
+                    taffy::compute_leaf_layout(
+                        inputs,
+                        style,
+                        |_, _| 0.0,
+                        |known_dimensions, available_space| {
+                            let known_dimensions = Size {
+                                width: known_dimensions.width.map(|e| Pixels(e / scale_factor)),
+                                height: known_dimensions.height.map(|e| Pixels(e / scale_factor)),
+                            };
+                            let available_space: Size<AvailableSpace> = available_space.into();
+                            let untransform = |ev: AvailableSpace| match ev {
+                                AvailableSpace::Definite(pixels) => {
+                                    AvailableSpace::Definite(Pixels(pixels.0 / scale_factor))
+                                }
+                                AvailableSpace::MinContent => AvailableSpace::MinContent,
+                                AvailableSpace::MaxContent => AvailableSpace::MaxContent,
+                            };
+                            let available_space = size(
+                                untransform(available_space.width),
+                                untransform(available_space.height),
+                            );
+                            let Some(node_context) = node_context else {
+                                return taffy::geometry::Size::default();
+                            };
+                            let measured_size: Size<Pixels> = (node_context.measure)(
+                                known_dimensions,
+                                available_space,
+                                window,
+                                cx,
+                            );
+                            snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
+                        },
+                    )
                 },
             ),
             EXPECT_MESSAGE,
@@ -821,10 +832,19 @@ impl ToTaffy<taffy::style::Style> for Style {
             margin: self.margin.to_taffy(rem_size, scale_factor),
             padding: self.padding.to_taffy(rem_size, scale_factor),
             border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
-            align_items: self.align_items.map(|x| x.into()),
-            align_self: self.align_self.map(|x| x.into()),
-            align_content: self.align_content.map(|x| x.into()),
-            justify_content: self.justify_content.map(|x| x.into()),
+            align_items: self
+                .align_items
+                .map(Into::into)
+                .unwrap_or(taffy::style::AlignItems::NORMAL),
+            align_self: self.align_self.map(Into::into),
+            align_content: self
+                .align_content
+                .map(Into::into)
+                .unwrap_or(taffy::style::AlignContent::NORMAL),
+            justify_content: self
+                .justify_content
+                .map(Into::into)
+                .unwrap_or(taffy::style::AlignContent::NORMAL),
             gap: self.gap.to_taffy(rem_size, scale_factor),
             flex_direction: self.flex_direction.into(),
             flex_wrap: self.flex_wrap.into(),

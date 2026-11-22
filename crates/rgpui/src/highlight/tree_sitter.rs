@@ -523,9 +523,9 @@ impl TreeSitterHighlighter {
         }
         self.tree = parser.parse(&self.source, None);
         self.runs.clear();
-        let Ok(events) = self
-            .engine
-            .highlight(&self.config, self.source.as_bytes(), None, |_| None)
+        let Ok(events) =
+            self.engine
+                .highlight(&self.config, self.source.as_bytes(), None, None, |_| None)
         else {
             return;
         };

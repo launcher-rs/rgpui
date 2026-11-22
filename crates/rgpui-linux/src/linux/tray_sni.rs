@@ -14,7 +14,7 @@ use ashpd::zbus::{Connection, object_server::SignalEmitter};
 // `crate = "ashpd::zbus"` 找到真实的 crate 路径（该选项对外名为 `crate`，
 // 尽管宏内部字段叫 crate_path）。
 use ashpd::zbus;
-use ashpd::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Str, Structure};
+use ashpd::zbus::{ObjectPath, OwnedObjectPath, OwnedVariant as OwnedValue, Str, Structure};
 use calloop::channel::Sender;
 use futures::{StreamExt, channel::mpsc};
 use parking_lot::Mutex;

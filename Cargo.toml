@@ -23,147 +23,147 @@ members = [
 edition = "2024"
 publish = true
 license = "Apache-2.0"
-version = "1.8.0"
+version = "1.8.1"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.8.0"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "1.8.0"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.8.0" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.8.0" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.8.0"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.8.0"}
-rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.8.0" }
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.8.0" }
-rgpui-dom = { path = "crates/rgpui-dom", version = "1.8.0" }
-rgpui-character = {path = "crates/rgpui-character",version = "1.8.0"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "1.8.0"}
-rgpui-term = {path = "crates/rgpui-term", version = "1.8.0"}
-rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.8.0"}
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.8.1"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "1.8.1"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.8.1" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.8.1" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.8.1"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.8.1"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.8.1" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.8.1" }
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.8.1" }
+rgpui-character = {path = "crates/rgpui-character",version = "1.8.1"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "1.8.1"}
+rgpui-term = {path = "crates/rgpui-term", version = "1.8.1"}
+rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.8.1"}
 
 
 # ---- 辅助功能（AccessKit） ----
-accesskit = "0.24.0"
-accesskit_macos = "0.26.0"
-accesskit_unix = "0.21.0"
-accesskit_windows = "0.32.1"
+accesskit = "0.25.2"
+accesskit_macos = "0.27.2"
+accesskit_unix = "0.24.1"
+accesskit_windows = "0.35.2"
 
 # ---- 错误处理 ----
 # 错误处理库
-anyhow = "1.0"
+anyhow = "1.0.104"
 # 自定义错误类型派生
-thiserror = "2.0"
+thiserror = "2.0.21"
 # 堆栈回溯
-backtrace = "0.3"
+backtrace = "0.3.77"
 # Markdown 解析（rgpui-markdown 使用）
-pulldown-cmark = "0.13"
+pulldown-cmark = "0.13.6"
 # 文本差异计算（rgpui 的 `diff` feature 使用）
 similar = "3.2.1"
 # LaTeX 公式解析 / 排版 / SVG 输出（rgpui-markdown 的 `latex` feature 使用）
-ratex-parser = "0.1.15"
-ratex-layout = "0.1.15"
+ratex-parser = "0.1.16"
+ratex-layout = "0.1.16"
 # `embed-fonts`（含 `standalone`）：内嵌 KaTeX 字体，字形转路径轮廓
 # （usvg 光栅化不认识 KaTeX 字体，只能走轮廓）
-ratex-svg = { version = "0.1.15", features = ["embed-fonts"] }
+ratex-svg = { version = "0.1.16", features = ["embed-fonts"] }
 # Mermaid 图表渲染（rgpui-markdown 的 `mermaid` feature 使用；纯 Rust，自维护 crate）
 mermaid-renderer = "0.1.1"
 
 # ---- 异步与并发 ----
 # 异步运行时（用于 async-tar）
-async-std = { version = "1.13", features = ["unstable"] }
+async-std = { version = "1.13.2", features = ["unstable"] }
 # 异步通道
 async-channel = "2.5.0"
 # 异步文件系统操作
-async-fs = "2.2"
+async-fs = "2.2.0"
 # 异步任务调度
-async-task = "4.7"
+async-task = "4.7.1"
 # 异步压缩
-async-compression = { version = "0.4", features = ["gzip", "futures-io"] }
+async-compression = { version = "0.4.52", features = ["gzip", "futures-io"] }
 # 异步 tar 归档
-async-tar = "0.6"
+async-tar = "0.6.1"
 # 异步 zip
 async_zip = { version = "0.0.19", features = ["deflate"] }
 # 异步 Futures 工具
-futures = "0.3"
+futures = "0.3.34"
 # 并发 Futures 组合子
 futures-concurrency = "7.7.1"
 # 轻量级 Futures
-futures-lite = "2.6"
+futures-lite = "2.6.1"
 # 轻量级异步运行时
-smol = "2.0"
+smol = "2.0.2"
 # 阻塞等待异步结果
-pollster = "1.0.1"
+pollster = "1.0.3"
 # 响应式流
-postage = { version = "0.5", features = ["futures-traits"] }
+postage = { version = "0.5.0", features = ["futures-traits"] }
 
 # ---- 序列化与数据格式 ----
 # 序列化/反序列化框架
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 # JSON 处理
-serde_json = { version = "1.0.151", features = ["preserve_order"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
 # 宽松 JSON 解析
-serde_json_lenient = { version = "0.2", features = ["preserve_order"] }
+serde_json_lenient = { version = "0.2.4", features = ["preserve_order"] }
 # URL 编码序列化
-serde_urlencoded = "0.7"
+serde_urlencoded = "0.7.1"
 # 保持插入顺序的哈希表
-indexmap = { version = "2.14.1", features = ["serde"] }
+indexmap = { version = "2.14.2", features = ["serde"] }
 # 高效句柄映射
 slotmap = "1.1.1"
 # 小数组优化的 Vec
-smallvec = { version = "1.16", features = ["union", "const_new"] }
+smallvec = { version = "1.16.6", features = ["union", "const_new"] }
 # 字节缓冲区
-bytes = "1.12.1"
+bytes = "1.12.2"
 
 # ---- 时间日期 ----
 # 日期时间处理
-chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+chrono = { version = "0.4.45", features = ["serde", "wasmbind"] }
 # Web 平台时间 API
 web-time = "1.1.0"
 
 # ---- 日志、追踪与性能分析 ----
 # 日志门面
-log = "0.4"
+log = "0.4.35"
 # 环境配置日志后端
-env_logger = "0.11"
+env_logger = "0.11.12"
 # 结构化追踪
-tracing = "0.1"
+tracing = "0.1.44"
 # 性能分析宏
-profiling = "1"
+profiling = "1.0.18"
 # 高动态范围直方图
-hdrhistogram = "7"
+hdrhistogram = "7.6.0"
 
 # ---- 集合与迭代器 ----
 # 扩展迭代器功能
 itertools = "0.15.0"
 # 数据并行
-rayon = "1.12"
+rayon = "1.12.0"
 
 # ---- 字符串与文本 ----
 # Unicode 文本分割
-unicode-segmentation = "1.13"
+unicode-segmentation = "1.13.3"
 # QR 码生成（rgpui qr-code feature，qr_code 组件）
-qrcode = "0.14"
+qrcode = "0.15"
 # 正则表达式
-regex = "1.13"
+regex = "1.13.2"
 # glob 模式匹配
-globset = "0.4"
+globset = "0.4.21"
 # shell 词法分析
 shlex = "2.0.1"
 # 流式读取直到分隔符
-take-until = "0.2.0"
+take-until = "0.3.0"
 # Unicode 大小写不敏感比较
-unicase = "2.9"
+unicase = "2.10.0"
 # URL 百分号编码
 percent-encoding = "2.3.2"
 # 枚举字符串工具
-strum = { version = "0.28", features = ["derive"] }
+strum = { version = "0.28.0", features = ["derive"] }
 
 # ---- 随机与测试 ----
 # 随机数生成
-rand = "0.10"
+rand = "0.10.4"
 # 属性测试
-proptest = { version = "1.11.0",features = ["attr-macro"] }
+proptest = { version = "1.12.0",features = ["attr-macro"] }
 # 属性测试派生
 proptest-derive = "0.8.0"
 # 美观的断言差异
@@ -171,9 +171,9 @@ pretty_assertions = { version = "1.4.1", features = ["unstable"] }
 
 # ---- 派生宏与代码生成 ----
 # 构造函数宏
-ctor = "1.0.13"
+ctor = "1.0.14"
 # 类型注册表
-inventory = "0.3.24"
+inventory = "0.3.25"
 # 常用 trait 派生
 derive_more = { version = "2.1.1", features = [
     "add",
@@ -191,13 +191,13 @@ stacksafe = "1.0.3"
 
 # ---- 并发与同步 ----
 # 高性能锁
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 
 # ---- 位标志与标识符 ----
 # 位标志宏
-bitflags = "2.13.1"
+bitflags = "2.13.2"
 # UUID 生成
-uuid = { version = "1.26.0", features = ["v4", "serde"] }
+uuid = { version = "1.29.3", features = ["v4", "serde"] }
 
 # ---- 图像处理 ----
 # 图像编解码（默认关闭 avif：纯解码的 UI 框架无需为 rav1e 这套 AV1 编码器链
@@ -212,15 +212,15 @@ image = { version = "0.25.10", default-features = false, features = [
     "webp",
 ] }
 # 2D 图形解析（painting 示例）
-lyon = { version = "1.0", features = ["extra"] }
+lyon = { version = "1.0.19", features = ["extra"] }
 
 # ---- 模式匹配与校验 ----
 # JSON Schema 生成
-schemars = { version = "1.2.2", features = ["indexmap2"] }
+schemars = { version = "1.2.3", features = ["indexmap2"] }
 
 # ---- URL 处理 ----
 # URL 解析
-url = { version = "2.5.8", default-features = false, features = ["std"] }
+url = { version = "2.5.9", default-features = false, features = ["std"] }
 
 # ---- 屏幕捕获 ----
 # 跨平台屏幕捕获
@@ -228,9 +228,9 @@ scap = { package = "scap-rs", version = "0.1",default-features = false }
 
 # ---- macOS 平台 ----
 # WebAssembly 绑定
-wasm-bindgen = "0.2.127"
+wasm-bindgen = "0.2.130"
 # Cocoa 框架绑定
-cocoa = "0.26.1"
+cocoa = "0.27.0"
 # Cocoa 基础绑定
 cocoa-foundation = "0.2.1"
 # CoreFoundation 绑定
@@ -238,13 +238,14 @@ core-foundation = "0.10.1"
 # CoreFoundation 系统接口
 core-foundation-sys = "0.8.7"
 # CoreVideo 绑定
-core-video = { version = "=0.5.2", features = ["metal"] }
+# metal_texture/metal_texture_cache 由 Cargo 自动生成的 metal feature 门控，需显式启用
+core-video = { version = "0.6.1", features = ["metal"] }
 # Mach 内核接口
-mach2 = "0.7"
+mach2 = "0.7.0"
 # Metal GPU API 绑定
-metal = "0.33"
+metal = "0.33.0"
 # Objective-C 运行时
-objc = "0.2"
+objc = "0.2.7"
 # AppKit 绑定
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSGraphics",
@@ -288,37 +289,37 @@ rustc-hash = "2.1.3"
 
 # ---- 过程宏工具 ----
 # 命名风格转换
-heck = "0.5"
+heck = "0.5.0"
 # 过程宏 token 处理
 proc-macro2 = "1.0.107"
 # Rust 代码生成
 quote = "1.0.47"
 # Rust 源码解析
-syn = { version = "3.0.4", features = ["full", "extra-traits", "visit-mut"] }
+syn = { version = "3.0.10", features = ["full", "extra-traits", "visit-mut"] }
 
 # ---- HTTP 网络 ----
 # HTTP 类型
-http = "1.5"
+http = "1.5.0"
 # HTTP Body trait
-http-body = "1.1"
+http-body = "1.1.0"
 
 # ---- 文件与目录 ----
 # 临时文件
 tempfile = "3.27.0"
 # 规范化路径
-dunce = "1.0"
+dunce = "1.0.5"
 # 标准目录路径
-dirs = "6.0"
+dirs = "7.0.0"
 # 递归目录遍历
-walkdir = "2.5"
+walkdir = "2.5.1"
 # 查找可执行文件
 which = "8.0.6"
 # 嵌入文件到二进制
-rust-embed = { version = "8.12", features = ["include-exclude"] }
+rust-embed = { version = "8.14.0", features = ["include-exclude"] }
 
 # ---- 加密与哈希 ----
 # SHA-2 哈希
-sha2 = "0.11"
+sha2 = "0.11.1"
 
 # ---- Git ----
 # Git 操作
@@ -326,15 +327,15 @@ git2 = { version = "0.21.0", default-features = false, features = ["vendored-lib
 
 # ---- 系统 ----
 # C 标准库绑定
-libc = "0.2"
+libc = "0.2.191"
 # Unix API 绑定
 nix = "0.31"
 # 无堆分配容器
-heapless = "0.9.3"
+heapless = "0.9.4"
 
 # ---- Linux 平台 ----
 # Freedesktop Portal 接口
-ashpd = { version = "0.13", default-features = false, features = [
+ashpd = { version = "0.14.3", default-features = false, features = [
     "async-io",
     "notification",
     "open_uri",
@@ -345,11 +346,11 @@ ashpd = { version = "0.13", default-features = false, features = [
 
 # ---- GPU 渲染 ----
 # WebGPU 实现
-wgpu = { version = "30.0" }
+wgpu = { version = "30.0.2" }
 
 # ---- 版本语义 ----
 # 语义化版本
-semver = { version = "1.0", features = ["serde"] }
+semver = { version = "1.0.28", features = ["serde"] }
 
 # ---- Windows 平台 ----
 # Windows 核心类型
@@ -357,19 +358,19 @@ windows-core = "0.62"
 
 # ---- Reqwest HTTP 客户端 ----
 # HTTP 客户端
-reqwest = { version = "0.13", features = ["json","charset","http2","multipart","socks","stream"] }
+reqwest = { version = "0.13.5", features = ["json","charset","http2","multipart","socks","stream"] }
 
 # ---- Tokio 异步运行时 ----
 # 异步运行时
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "time"] }
+tokio = { version = "1.54.1", features = ["rt", "rt-multi-thread", "time"] }
 
 # ---- TLS ----
 # TLS 实现
-rustls = { version = "0.23.43" }
+rustls = { version = "0.23.46" }
 # 平台证书验证
-rustls-platform-verifier = "0.7.0"
+rustls-platform-verifier = "0.7.1"
 
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 
 lsp-types = { version = "0.97.0", features = ["proposed"] }
 
@@ -377,50 +378,50 @@ ropey = { version = "=2.0.0-beta.1", features = [
     "metric_lines_lf",
     "metric_utf16",
 ] }
-serde_repr = "0.1"
+serde_repr = "0.1.21"
 
 portable-pty = "0.9"
 
-alacritty_terminal = "0.26"
-toml = "1.1"
+alacritty_terminal = "0.26.0"
+toml = "1.2"
 
 # ---- 跨 crate 共享依赖 ----
 # 窗口原始句柄抽象
-raw-window-handle = "0.6"
+raw-window-handle = "0.6.2"
 # 字体布局与字形分配
-etagere = "0.3"
+etagere = "0.3.0"
 # 零开销类型转换
-bytemuck = "1"
+bytemuck = "1.25.2"
 # JavaScript互操作绑定
-js-sys = "0.3"
+js-sys = "0.3.107"
 # Web API绑定
-web-sys = "0.3"
+web-sys = "0.3.107"
 # 路径查找器几何运算
-pathfinder_geometry = "0.5"
+pathfinder_geometry = "0.5.1"
 # 字体塑形与光栅化
 swash = "0.2.10"
 # macOS Core Graphics绑定
-core-graphics = "0.24"
+core-graphics = "0.25"
 # macOS Core Text绑定
-core-text = "21"
+core-text = "22"
 # Objective-C外部类型包装
-foreign-types = "0.5"
+foreign-types = "0.5.0"
 # Objective-C block封装
-block = "0.1"
+block = "0.1.6"
 # Objective-C2运行时绑定
-objc2 = "0.6"
+objc2 = "0.6.5"
 # WASM panic错误输出到控制台
 console_error_panic_hook = "0.1.7"
 # WASM Future桥接
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures = "0.4.80"
 # Windows原生菜单栏
-muda = "0.19"
+muda = "0.21.2"
 # Windows数值类型
 windows-numerics = "0.3"
 # Windows注册表操作
 windows-registry = "0.5"
 # 高性能多生产者多消费者通道
-crossbeam-channel = "0.5"
+crossbeam-channel = "0.5.17"
 
 [workspace.dependencies.windows]
 version = "0.62"

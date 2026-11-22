@@ -14,12 +14,12 @@ shared-wgpu = ["dep:rgpui-wgpu"]
 
 [dependencies]
 rgpui = { workspace = true }
-scenekit = { version = "0.2", features = ["renderer", "loader"] }
+scenekit = { version = "0.2.0", features = ["renderer", "loader"] }
 wgpu = { workspace = true }
 image = { workspace = true }
 bytemuck.workspace = true
 log.workspace = true
-gltf = { version = "1.4", features = ["extras"] }
+gltf = { version = "1.4.1", features = ["extras"] }
 serde_json = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
@@ -29,7 +29,7 @@ rgpui-wgpu = { workspace = true, optional = true }
 rgpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 pollster = { workspace = true }
 smol = { workspace = true }
-rfd = "0.17"
+rfd = "0.18"
 
 [[example]]
 name = "scenekit_cube"

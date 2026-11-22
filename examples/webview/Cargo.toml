@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 rgpui = { workspace = true, features = ["webview"] }
 rgpui-platform.workspace = true
-wry = "0.56.1"
+wry = "0.57.3"

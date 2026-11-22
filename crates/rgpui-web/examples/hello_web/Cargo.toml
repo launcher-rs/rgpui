@@ -13,4 +13,4 @@ path = "main.rs"
 [dependencies]
 rgpui = { path = "../../../rgpui", features = ["dom-backend"] }
 rgpui-platform = { path = "../../../rgpui-platform" }
-web-time = "1"
+web-time = "1.1.0"
