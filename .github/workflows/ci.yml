@@ -23,7 +23,11 @@ jobs:
       matrix:
         os:
           - windows-latest
-          - ubuntu-latest
+          # 固定 24.04 LTS：ubuntu-latest 已滚到 26.04（resolute）开发版，
+          # 其 apt 源在 GitHub runner 上连接失败/404，且本文件下方的镜像修复
+          # 脚本是针对 24.04 的 /etc/apt/apt-mirrors.txt 写的。
+          # webkit2gtk-4.1-dev 等依赖在 24.04 上有稳定包。
+          - ubuntu-24.04
           - macos-latest
 
     runs-on: ${{ matrix.os }}
