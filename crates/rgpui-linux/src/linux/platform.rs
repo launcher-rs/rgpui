@@ -321,12 +321,21 @@ impl LinuxCommon {
             commands: commands_tx,
         };
 
+        // 注册前给主线程一个初始设置窗口。主机在 RegisterStatusNotifierItem 之后
+        // 会立即拉取菜单；若此刻 set_tray_menu 尚未执行，GNOME 的 ubuntu-appindicators
+        // 会缓存空菜单，而空菜单无法被打开（active 永不为 true），它收到 LayoutUpdated
+        // 只置「待更新」标志、等菜单打开才重拉——菜单却因空着打不开，于是永久为空，
+        // 左右键都只剩 Activate。稍候片刻让初始设置完成再启动服务注册，确保主机首次
+        // 拉取即拿到完整菜单。
+        let executor = self.background_executor.clone();
+        let events = self.tray_events.clone();
         self.background_executor
-            .spawn(tray_sni::serve(
-                shared,
-                commands_rx,
-                self.tray_events.clone(),
-            ))
+            .spawn(async move {
+                executor.timer(std::time::Duration::from_millis(300)).await;
+                if let Err(err) = tray_sni::serve(shared, commands_rx, events).await {
+                    log::error!("托盘 DBus 服务退出: {err:?}");
+                }
+            })
             .detach();
 
         self.tray = Some(handle.clone());

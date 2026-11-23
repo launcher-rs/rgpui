@@ -961,6 +961,9 @@ impl WaylandWindowStatePtr {
             }
         }
         state.force_render_after_recovery = true;
+        // 重置首次 configure 标志：configure 处理仅在该标志为 false 时请求帧回调，
+        // 不重置则恢复后永不绘制首帧，窗口卡在 WaitingForFrame 无法重现。
+        state.acknowledged_first_configure = false;
         state.surface.commit();
         log::debug!("Remapping Wayland window; waiting for configure");
     }

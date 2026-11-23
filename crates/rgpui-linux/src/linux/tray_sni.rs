@@ -404,6 +404,13 @@ pub(crate) async fn serve(
         if !registered {
             if register(&conn).await.is_ok() {
                 registered = true;
+                // 延迟注册成功：主机可能在注册前已拉取过空菜单/空图标，
+                // 这里补发当前状态信号，促使主机重新读取。
+                let status = shared.lock().status.clone();
+                let _ = sni_emitter.new_icon().await;
+                let _ = sni_emitter.new_status(&status).await;
+                let revision = shared.lock().menu_revision;
+                let _ = menu_emitter.layout_updated(revision, 0).await;
             } else {
                 continue;
             }
