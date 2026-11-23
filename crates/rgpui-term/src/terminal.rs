@@ -705,8 +705,8 @@ impl TerminalBuilder {
             selection_head: None,
             breadcrumb_text: String::new(),
             scroll_px: px(0.),
-                drag_subline: px(0.),
-                scrollbar_drag: None,
+            drag_subline: px(0.),
+            scrollbar_drag: None,
             selection_phase: SelectionPhase::Ended,
             drag_edge: None,
             drag_edge_task: None,
@@ -1027,8 +1027,7 @@ impl Terminal {
         // 渲染前先按输出轮次重定位搜索高亮（新输出/重排会让网格坐标漂移）。
         self.refresh_search(&mut terminal, cx);
 
-        self.last_content =
-            Self::make_content(&terminal, &self.last_content, self.drag_subline);
+        self.last_content = Self::make_content(&terminal, &self.last_content, self.drag_subline);
 
         // 将当前搜索匹配同步到渲染内容
         self.last_content.search_match = self.search.as_ref().and_then(|search| search.current);

@@ -250,7 +250,8 @@ impl TerminalView {
         // 外部松开兜底在 TerminalElement 的 paint 阶段清除了解析标志；若松开
         // 发生在终端外，这里在下一次按下时同步清理视图侧的拖动状态。
         self.is_dragging_scrollbar = false;
-        self.terminal.update(cx, |terminal, _| terminal.end_scrollbar_drag());
+        self.terminal
+            .update(cx, |terminal, _| terminal.end_scrollbar_drag());
 
         window.focus(&self.focus_handle, cx);
         window.prevent_default();
@@ -672,13 +673,10 @@ mod tests {
         let start_offset = 0;
         let history_at_grab = 10_000;
         let scrollable_track = 730.0;
-        let one_px = scrollbar_drag_offset(
-            start_offset,
-            history_at_grab,
-            -1.0,
-            scrollable_track,
+        let one_px = scrollbar_drag_offset(start_offset, history_at_grab, -1.0, scrollable_track);
+        assert!(
+            one_px > 0.0 && one_px.fract().abs() > 0.001,
+            "1px 拖动应产生带小数的行偏移，实际 {one_px}"
         );
-        assert!(one_px > 0.0 && one_px.fract().abs() > 0.001,
-            "1px 拖动应产生带小数的行偏移，实际 {one_px}");
     }
 }

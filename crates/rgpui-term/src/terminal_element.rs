@@ -1721,10 +1721,7 @@ impl Element for TerminalElement {
             // 缓冲（alacritty display_iter 从 -offset-1 起），下移后正好
             // 补进顶部，底部署出的部分由 mask 裁掉、背景已铺满。
             // 这样鼠标每移动 1px 画面就移动 1px，而不是按整行跳十几行。
-            let origin = Point::new(
-                bounds.origin.x,
-                bounds.origin.y + layout.subline_offset,
-            );
+            let origin = Point::new(bounds.origin.x, bounds.origin.y + layout.subline_offset);
 
             for rect in &layout.background_rects {
                 rect.paint(origin, &layout.dimensions, window);
