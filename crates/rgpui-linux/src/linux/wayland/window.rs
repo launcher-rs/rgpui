@@ -11,7 +11,7 @@ use rgpui::collections::{FxHashMap, HashMap};
 
 use raw_window_handle as rwh;
 use wayland_backend::client::ObjectId;
-use wayland_client::WEnum;
+use wayland_client::{Connection, WEnum};
 use wayland_client::{
     Proxy,
     protocol::{wl_output, wl_seat, wl_surface},
@@ -29,6 +29,7 @@ use wayland_protocols::{
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 
+use super::mapping::WindowMapping;
 use crate::linux::wayland::{display::WaylandDisplay, serial::SerialKind};
 use crate::linux::{Globals, Output, WaylandClientStatePtr, get_window};
 use rgpui::{
@@ -93,6 +94,14 @@ struct InProgressConfigure {
 pub struct WaylandWindowState {
     surface_state: WaylandSurfaceState,
     acknowledged_first_configure: bool,
+    mapping: WindowMapping,
+    /// 取消映射会清除服务端属性，恢复时需重发最小尺寸和窗口状态。
+    window_min_size: Option<Size<Pixels>>,
+    restore_activation_token: Option<String>,
+    /// 只恢复随父窗口一起隐藏的子窗口，不改变原本就隐藏的子窗口。
+    hidden_children: Vec<ObjectId>,
+    frame_callback_pending: bool,
+    remap_retry_scheduled: bool,
     parent: Option<WaylandWindowStatePtr>,
     /// Child surfaces mapped to whether they block this window's input (dialogs
     /// block, popups don't). Children are closed before this window closes.
@@ -541,6 +550,12 @@ impl WaylandWindowState {
         Ok(Self {
             surface_state,
             acknowledged_first_configure: false,
+            mapping: WindowMapping::default(),
+            window_min_size: options.window_min_size,
+            restore_activation_token: None,
+            hidden_children: Vec::new(),
+            frame_callback_pending: false,
+            remap_retry_scheduled: false,
             parent,
             children: FxHashMap::default(),
             surface,
@@ -618,6 +633,18 @@ impl WaylandWindowState {
 }
 
 pub(crate) struct WaylandWindow(pub WaylandWindowStatePtr);
+
+/// 同步屏障和帧回调都带窗口代数，防止隐藏前的回调启动新的绘制循环。
+pub(crate) struct SurfaceCallback {
+    pub surface_id: ObjectId,
+    pub generation: u64,
+    pub kind: SurfaceCallbackKind,
+}
+
+pub(crate) enum SurfaceCallbackKind {
+    Frame,
+    Remap,
+}
 pub enum ImeInput {
     InsertText(String),
     SetMarkedText(String),
@@ -628,6 +655,7 @@ pub enum ImeInput {
 impl Drop for WaylandWindow {
     fn drop(&mut self) {
         let mut state = self.0.state.borrow_mut();
+        state.mapping.hide();
         let surface_id = state.surface.id();
         if let Some(parent) = state.parent.as_ref() {
             parent.state.borrow_mut().children.remove(&surface_id);
@@ -786,20 +814,172 @@ impl WaylandWindowStatePtr {
     /// 合成器有权拒绝（比如没有可用的用户输入序列号）；即使被拒，KWin / Mutter
     /// 也会用 app_id 在任务栏上提示「有应用想抢焦点」。
     pub(crate) fn request_activation(&self) {
-        let state = self.state.borrow();
-        if let (Some(activation), Some(app_id)) = (&state.globals.activation, state.app_id.clone())
-        {
+        let mut state = self.state.borrow_mut();
+        let client = state.client.get_client();
+        let supplied_token = client.borrow_mut().common.tray_activation_token.take();
+        if !state.mapping.is_visible() {
+            if supplied_token.is_some() {
+                state.restore_activation_token = supplied_token;
+            }
+            if let Some(generation) = state.mapping.show() {
+                // 同步回复之前丢弃旧 configure；之后再发送空提交，确保新旧配置不串轮。
+                if let Some(backend) = state.surface.backend().upgrade() {
+                    Connection::from_backend(backend).display().sync(
+                        &state.globals.qh,
+                        SurfaceCallback {
+                            surface_id: state.surface.id(),
+                            generation,
+                            kind: SurfaceCallbackKind::Remap,
+                        },
+                    );
+                }
+            }
+            return;
+        }
+        if let Some(activation) = &state.globals.activation {
+            // 托盘点击发生在桌面外壳，不能用本窗口的旧鼠标序列号重新申请令牌。
+            // 优先消费宿主传来的令牌；它无需本窗口已设置 app_id。
+            if let Some(token) = supplied_token {
+                log::debug!("Activate a Wayland window using a token provided by the tray host");
+                activation.activate(token, &state.surface);
+                return;
+            }
             state.client.set_pending_activation(state.surface.id());
             let token = activation.get_activation_token(&state.globals.qh, ());
             let serial = state.client.get_serial(SerialKind::MousePress);
-            token.set_app_id(app_id);
+            // app_id 是协议的可选信息，缺失时仍应发送激活请求。
+            if let Some(app_id) = state.app_id.clone() {
+                token.set_app_id(app_id);
+            }
             token.set_serial(serial, &state.globals.seat);
             token.set_surface(&state.surface);
             token.commit();
         }
     }
 
-    /// 最小化本窗口（Wayland 没有「取消映射」以外的隐藏手段，隐藏即最小化）。
+    /// 处理异步申请的令牌；恢复未完成时延期，已隐藏时丢弃。
+    pub(crate) fn activate_with_token(&self, token: String) {
+        let mut state = self.state.borrow_mut();
+        if state.mapping.is_hidden() {
+            return;
+        }
+        if !state.mapping.is_visible() {
+            // 不覆盖恢复期间已收到的托盘宿主令牌。
+            state.restore_activation_token.get_or_insert(token);
+        } else if let Some(activation) = &state.globals.activation {
+            activation.activate(token, &state.surface);
+        }
+    }
+
+    /// 取消普通窗口映射；保留实体、后台任务及 GPU 缓存，任务栏中不再保留窗口。
+    pub(crate) fn hide_window(&self) -> bool {
+        let (client, children) = {
+            let mut state = self.state.borrow_mut();
+            if !matches!(state.surface_state, WaylandSurfaceState::Xdg(_)) {
+                return false;
+            }
+            if !state.mapping.hide() {
+                return false;
+            }
+            state.acknowledged_first_configure = false;
+            state.restore_activation_token = None;
+            state.renderer_presented = false;
+            state.in_progress_configure = None;
+            state.in_progress_window_controls = None;
+            state.resize_throttle = false;
+            state.frame_callback_pending = false;
+            state.remap_retry_scheduled = false;
+            state.active = false;
+            state.hovered = false;
+            (
+                state.client.get_client(),
+                state.children.keys().cloned().collect::<Vec<_>>(),
+            )
+        };
+        // 先隐藏子窗口，避免父窗口取消映射时留下独立的对话框；短生命周期弹窗直接关闭。
+        for id in children {
+            let child = get_window(&mut client.borrow_mut(), &id);
+            if let Some(child) = child {
+                let popup = matches!(
+                    child.state.borrow().surface_state,
+                    WaylandSurfaceState::Popup(_)
+                );
+                if popup {
+                    // 当前调用可能位于应用的关闭回调中，推迟销毁以免重入 App 借用。
+                    let executor = self.state.borrow().globals.executor.clone();
+                    executor
+                        .spawn(async move {
+                            child.close();
+                        })
+                        .detach();
+                } else if child.hide_window() {
+                    self.state.borrow_mut().hidden_children.push(id);
+                }
+            }
+        }
+        let state = self.state.borrow();
+        state.surface.attach(None, 0, 0);
+        state.surface.commit();
+        log::debug!("Unmapped Wayland window; background state retained");
+        true
+    }
+
+    /// 同步屏障后重发取消映射时丢失的属性，再请求新一轮 configure。
+    fn remap_after_sync(&self, generation: u64) {
+        let mut state = self.state.borrow_mut();
+        if !state.mapping.synced(generation) {
+            return;
+        }
+        state.in_progress_configure = None;
+        state.in_progress_window_controls = None;
+        if let Some(toplevel) = state.surface_state.toplevel() {
+            toplevel.set_title(state.title.clone());
+            if let Some(app_id) = &state.app_id {
+                toplevel.set_app_id(app_id.clone());
+            }
+            if let Some(min) = state.window_min_size {
+                toplevel.set_min_size(f32::from(min.width) as i32, f32::from(min.height) as i32);
+            }
+            let max = state.renderer.max_texture_size() as i32;
+            toplevel.set_max_size(max, max);
+            if let Some(parent) = &state.parent {
+                toplevel.set_parent(parent.toplevel().as_ref());
+            }
+            if state.maximized {
+                toplevel.set_maximized();
+            }
+            if state.fullscreen {
+                toplevel.set_fullscreen(None);
+            }
+        }
+        if let Some(decoration) = state.surface_state.decoration() {
+            decoration.set_mode(state.decorations.to_xdg());
+        }
+        if let WaylandSurfaceState::Xdg(xdg) = &state.surface_state {
+            if let Some(dialog) = &xdg.dialog {
+                dialog.set_modal();
+            }
+        }
+        state.force_render_after_recovery = true;
+        state.surface.commit();
+        log::debug!("Remapping Wayland window; waiting for configure");
+    }
+
+    /// 只执行当前一轮映射的回调，忽略隐藏前残留的帧回调。
+    pub(crate) fn handle_surface_callback(&self, callback: &SurfaceCallback) {
+        if callback.generation != self.state.borrow().mapping.generation() {
+            return;
+        }
+        match callback.kind {
+            SurfaceCallbackKind::Frame => {
+                self.state.borrow_mut().frame_callback_pending = false;
+                self.frame();
+            }
+            SurfaceCallbackKind::Remap => self.remap_after_sync(callback.generation),
+        }
+    }
+
+    /// 最小化保留任务栏入口，与隐藏到托盘分开处理。
     pub(crate) fn minimize_window(&self) {
         if let Some(toplevel) = self.state.borrow().surface_state.toplevel() {
             toplevel.set_minimized();
@@ -825,7 +1005,20 @@ impl WaylandWindowStatePtr {
 
     pub fn frame(&self) {
         let mut state = self.state.borrow_mut();
-        state.surface.frame(&state.globals.qh, state.surface.id());
+        if !state.mapping.can_render() || !state.acknowledged_first_configure {
+            return;
+        }
+        if !state.frame_callback_pending {
+            state.surface.frame(
+                &state.globals.qh,
+                SurfaceCallback {
+                    surface_id: state.surface.id(),
+                    generation: state.mapping.generation(),
+                    kind: SurfaceCallbackKind::Frame,
+                },
+            );
+            state.frame_callback_pending = true;
+        }
         state.resize_throttle = false;
         let force_render = state.force_render_after_recovery;
         state.force_render_after_recovery = false;
@@ -841,6 +1034,9 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn handle_xdg_surface_event(&self, event: xdg_surface::Event) {
+        if !self.state.borrow().mapping.accepts_configure() {
+            return;
+        }
         if let xdg_surface::Event::Configure { serial } = event {
             {
                 let mut state = self.state.borrow_mut();
@@ -891,6 +1087,8 @@ impl WaylandWindowStatePtr {
             let mut state = self.state.borrow_mut();
             state.surface_state.ack_configure(serial);
 
+            state.mapping.configured();
+
             let window_geometry = inset_by_tiling(
                 state.bounds.map_origin(|_| px(0.0)),
                 state.inset(),
@@ -916,6 +1114,9 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn handle_toplevel_decoration_event(&self, event: zxdg_toplevel_decoration_v1::Event) {
+        if !self.state.borrow().mapping.accepts_configure() {
+            return;
+        }
         if let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event {
             match mode {
                 WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ServerSide) => {
@@ -952,6 +1153,9 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn handle_toplevel_event(&self, event: xdg_toplevel::Event) -> bool {
+        if !self.state.borrow().mapping.accepts_configure() {
+            return false;
+        }
         match event {
             xdg_toplevel::Event::Configure {
                 width,
@@ -1178,7 +1382,7 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn handle_ime(&self, ime: ImeInput) {
-        if self.is_blocked() {
+        if !self.state.borrow().mapping.can_render() || self.is_blocked() {
             return;
         }
         let mut state = self.state.borrow_mut();
@@ -1279,7 +1483,7 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn handle_input(&self, input: PlatformInput) {
-        if self.is_blocked() {
+        if !self.state.borrow().mapping.can_render() || self.is_blocked() {
             return;
         }
         let callback = self.callbacks.borrow_mut().input.take();
@@ -1609,8 +1813,7 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn hide(&self) {
-        // Wayland 协议没有「不显示但保留」的手段，隐藏等同于最小化
-        self.0.minimize_window();
+        self.0.hide_window();
     }
 
     fn zoom(&self) {
@@ -1684,6 +1887,9 @@ impl PlatformWindow for WaylandWindow {
 
     fn draw(&self, scene: &Scene) {
         let mut state = self.borrow_mut();
+        if !state.mapping.can_render() || !state.acknowledged_first_configure {
+            return;
+        }
 
         if state.renderer.device_lost() {
             let raw_window = RawWindow {
@@ -1716,6 +1922,9 @@ impl PlatformWindow for WaylandWindow {
 
     fn completed_frame(&self) {
         let mut state = self.borrow_mut();
+        if !state.mapping.can_render() || !state.acknowledged_first_configure {
+            return;
+        }
 
         // 解决旧版本 wlroots 中的一个问题：在未附加缓冲区的情况下提交
         // 可能导致无效同步，从而导致图形损坏
@@ -1723,7 +1932,58 @@ impl PlatformWindow for WaylandWindow {
             state.surface.commit();
         }
 
+        let restored = state.renderer_presented && state.mapping.presented();
         state.renderer_presented = false;
+        if !restored && !state.mapping.is_visible() && !state.remap_retry_scheduled {
+            // 尚未映射的窗口可能收不到 frame 回调；首帧获取缓冲区失败时主动重试。
+            state.remap_retry_scheduled = true;
+            let generation = state.mapping.generation();
+            let weak_state = Rc::downgrade(&self.0.state);
+            let weak_callbacks = Rc::downgrade(&self.0.callbacks);
+            state
+                .globals
+                .executor
+                .spawn(async move {
+                    smol::Timer::after(std::time::Duration::from_millis(16)).await;
+                    let (Some(state), Some(callbacks)) =
+                        (weak_state.upgrade(), weak_callbacks.upgrade())
+                    else {
+                        return;
+                    };
+                    {
+                        let mut state = state.borrow_mut();
+                        if state.mapping.generation() != generation {
+                            return;
+                        }
+                        state.remap_retry_scheduled = false;
+                        if state.mapping.is_visible() || !state.mapping.can_render() {
+                            return;
+                        }
+                        state.force_render_after_recovery = true;
+                    }
+                    WaylandWindowStatePtr { state, callbacks }.frame();
+                })
+                .detach();
+        }
+        if restored {
+            let token = state.restore_activation_token.take();
+            let children = std::mem::take(&mut state.hidden_children);
+            let client = state.client.get_client();
+            drop(state);
+            // 缓冲区已经提交，合成器才有可激活的窗口；此前不得消费单次令牌。
+            if let Some(token) = token {
+                self.0.activate_with_token(token);
+            } else {
+                self.0.request_activation();
+            }
+            for id in children {
+                let child = get_window(&mut client.borrow_mut(), &id);
+                if let Some(child) = child {
+                    child.request_activation();
+                }
+            }
+            log::debug!("Wayland window remapped and first frame presented");
+        }
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {

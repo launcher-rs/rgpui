@@ -178,6 +178,9 @@ pub(crate) struct PlatformHandlers {
 }
 
 pub(crate) struct LinuxCommon {
+    /// 当前托盘回调携带的激活令牌；Wayland 窗口取走后立即失效。
+    #[cfg(any(feature = "wayland", feature = "x11"))]
+    pub(crate) tray_activation_token: Option<String>,
     pub(crate) background_executor: BackgroundExecutor,
     pub(crate) foreground_executor: ForegroundExecutor,
     pub(crate) text_system: Arc<dyn PlatformTextSystem>,
@@ -232,6 +235,8 @@ impl LinuxCommon {
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
         let common = LinuxCommon {
+            #[cfg(any(feature = "wayland", feature = "x11"))]
+            tray_activation_token: None,
             background_executor,
             foreground_executor: ForegroundExecutor::new(dispatcher),
             text_system,

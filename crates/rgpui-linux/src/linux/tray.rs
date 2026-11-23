@@ -35,9 +35,9 @@ pub(crate) const MENU_TYPE_SUBMENU: &str = "submenu";
 /// 托盘事件：由 DBus 服务线程产生，投递到主线程处理
 pub(crate) enum TrayEvent {
     /// 托盘图标被交互（双击等）
-    Icon(TrayIconEvent),
+    Icon(TrayIconEvent, Option<String>),
     /// 托盘菜单项被点击，携带应用侧的菜单项标识
-    MenuAction(SharedString),
+    MenuAction(SharedString, Option<String>),
 }
 
 /// 派发托盘事件到用户回调
@@ -57,7 +57,7 @@ pub(crate) fn dispatch_tray_event(
         icon_callback = common.callbacks.tray_icon_event.take();
         menu_callback = common.callbacks.tray_menu_action.take();
         app_menu_callback = common.callbacks.app_menu_action.take();
-        if let TrayEvent::MenuAction(id) = &event {
+        if let TrayEvent::MenuAction(id, _) = &event {
             legacy_action = common
                 .tray_menu_actions
                 .get(id)
@@ -66,29 +66,35 @@ pub(crate) fn dispatch_tray_event(
     });
 
     match event {
-        TrayEvent::Icon(icon_event) => {
+        TrayEvent::Icon(icon_event, mut token) => {
+            with_common(&mut |common| common.tray_activation_token = token.take());
             if let Some(callback) = icon_callback.as_mut() {
                 callback(icon_event);
             }
         }
         // 旧 API 的菜单项自带 Action → 走 app_menu_action；新 API 的标识 → 走 tray_menu_action
-        TrayEvent::MenuAction(id) => match legacy_action {
-            Some(action) => {
-                if let Some(callback) = app_menu_callback.as_mut() {
-                    callback(&*action);
-                } else {
-                    log::debug!("托盘菜单项 {id} 带有动作，但应用没注册 on_app_menu_action");
+        TrayEvent::MenuAction(id, mut token) => {
+            with_common(&mut |common| common.tray_activation_token = token.take());
+            match legacy_action {
+                Some(action) => {
+                    if let Some(callback) = app_menu_callback.as_mut() {
+                        callback(&*action);
+                    } else {
+                        log::debug!("托盘菜单项 {id} 带有动作，但应用没注册 on_app_menu_action");
+                    }
+                }
+                None => {
+                    if let Some(callback) = menu_callback.as_mut() {
+                        callback(id);
+                    }
                 }
             }
-            None => {
-                if let Some(callback) = menu_callback.as_mut() {
-                    callback(id);
-                }
-            }
-        },
+        }
     }
 
     with_common(&mut |common| {
+        // 令牌仅供本次托盘回调使用；未消费的令牌不能泄漏给之后的激活动作。
+        common.tray_activation_token = None;
         common.callbacks.tray_icon_event = icon_callback.take();
         common.callbacks.tray_menu_action = menu_callback.take();
         common.callbacks.app_menu_action = app_menu_callback.take();
@@ -128,6 +134,8 @@ pub(crate) struct MenuNode {
 
 /// SNI 与主线程共享的托盘状态
 pub(crate) struct SniShared {
+    /// KDE 提供给下一次托盘交互的单次激活令牌，不写入日志。
+    pub(crate) activation_token: Option<String>,
     /// SNI `Id`，主机要求非空
     pub(crate) id: String,
     /// SNI `Title`
@@ -151,6 +159,7 @@ impl SniShared {
     pub(crate) fn new() -> Self {
         let id = app_sni_id();
         Self {
+            activation_token: None,
             title: id.clone(),
             id,
             // 主机对 Status 大小写敏感，Passive 会隐藏图标
@@ -454,6 +463,39 @@ fn collect_tray_menu_actions_into(
 mod tests {
     use super::*;
     use rgpui::{Menu, NoAction};
+
+    // 回调必须能重新借用平台状态；消费只能发生一次，未消费的令牌也必须清理。
+    #[test]
+    fn activation_token_is_scoped_to_the_tray_callback() {
+        use std::{cell::RefCell, rc::Rc};
+        let event_loop = calloop::EventLoop::<()>::try_new().unwrap();
+        let (common, _main_receiver, _power_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let common = Rc::new(RefCell::new(common));
+        let weak = Rc::downgrade(&common);
+        let observed = Rc::new(RefCell::new(Vec::new()));
+        let observations = observed.clone();
+        common.borrow_mut().callbacks.tray_menu_action = Some(Box::new(move |_| {
+            let common = weak.upgrade().unwrap();
+            let mut common = common.borrow_mut();
+            observations
+                .borrow_mut()
+                .push(common.tray_activation_token.take());
+            assert!(common.tray_activation_token.take().is_none());
+        }));
+        let mut with_common = |f: &mut dyn FnMut(&mut LinuxCommon)| f(&mut common.borrow_mut());
+        dispatch_tray_event(
+            TrayEvent::MenuAction("show".into(), Some("menu".into())),
+            &mut with_common,
+        );
+        dispatch_tray_event(TrayEvent::MenuAction("show".into(), None), &mut with_common);
+        assert_eq!(*observed.borrow(), vec![Some("menu".into()), None]);
+        // 没有图标回调时，令牌也不能留给之后的非托盘激活。
+        dispatch_tray_event(
+            TrayEvent::Icon(TrayIconEvent::LeftClick, Some("unused".into())),
+            &mut with_common,
+        );
+        assert!(common.borrow().tray_activation_token.is_none());
+    }
 
     /// 递归收集 `convert_menu_items_to_tray` 产出的菜单项标识
     fn ids_of(items: &[TrayMenuItem]) -> Vec<SharedString> {

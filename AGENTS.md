@@ -95,7 +95,8 @@ Windows 端 `--workspace --all-targets -- -D warnings` 全绿。
   格式，ICO 会记警告并留空）。
 - Linux 的应用级 `Platform::activate/hide`：X11 发 EWMH `_NET_ACTIVE_WINDOW`
   （先 map 回被 `hide()` 撤下的窗口，否则窗管会忽略），Wayland 走 xdg-activation
-  （合成器可拒绝）；`hide()` 在 X11 是 unmap、Wayland 是最小化。`hide_other_apps` /
+  （合成器可拒绝）；`hide()` 在 X11 是 unmap、Wayland 普通窗口提交空 buffer 取消映射，
+  `activate_window()` 等待新 configure 和首帧后激活；最小化仍保留任务栏入口。`hide_other_apps` /
   `unhide_other_apps` 在 Linux 没有对应协议能力，保留空实现。
 
 ## 提交与 PR 规范
