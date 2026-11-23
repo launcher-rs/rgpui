@@ -31,18 +31,24 @@ use crate::{Event, Terminal, TerminalElement, TextStyle, ThemeManager};
 const SCROLLBAR_WIDTH: f32 = 8.0;
 const SCROLLBAR_THUMB_MIN_HEIGHT: f32 = 20.0;
 
-/// 拖动滚动条诊断：累计收到多少次拖动事件、上一次打印的时间戳。
-///
-/// 只在 `RUTERM_TRACE_EXTERNAL` 打开时使用。按 250ms 节流打印，既能看出
-/// 「拖动事件是否还在来」，又不会因为刷屏本身拖慢 UI。
-static DRAG_EVENTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static DRAG_REPORT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Convert pointer movement into a scroll offset using the geometry captured when
+/// the thumb was grabbed, so incoming output cannot change the drag sensitivity.
+fn scrollbar_drag_offset(
+    start_offset: usize,
+    history_size: usize,
+    dy: f32,
+    scrollable_track: f32,
+) -> f32 {
+    if history_size == 0 || scrollable_track <= 0.0 {
+        return 0.0;
+    }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+    // 保留小数行：整数部分驱动 alacritty 的 display_offset，
+    // 小数部分交给渲染层做亚像素平移。若在这里 round 成整数，
+    // 鼠标移动不足「一行对应的像素」时画面完全不动，跨过门槛又跳一行——
+    // 历史很长时一行 = 十几像素，正是「停住一下再跳」的由来。
+    let target = start_offset as f64 - (dy as f64 / scrollable_track as f64) * history_size as f64;
+    target.clamp(0.0, history_size as f64) as f32
 }
 
 actions!(
@@ -79,6 +85,9 @@ pub struct TerminalView {
     scrollbar_hovered: bool,
     drag_start_y: Pixels,
     drag_start_offset: usize,
+    drag_history_size: usize,
+    drag_scrollable_track: f32,
+    drag_last_offset: f32,
 }
 
 impl TerminalView {
@@ -130,6 +139,9 @@ impl TerminalView {
             scrollbar_hovered: false,
             drag_start_y: px(0.),
             drag_start_offset: 0,
+            drag_history_size: 0,
+            drag_scrollable_track: 0.0,
+            drag_last_offset: 0.0,
         }
     }
 
@@ -235,6 +247,12 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // 外部松开兜底在 TerminalElement 的 paint 阶段清除了解析标志；若松开
+        // 发生在终端外，这里在下一次按下时同步清理视图侧的拖动状态。
+        self.is_dragging_scrollbar = false;
+        self.terminal
+            .update(cx, |terminal, _| terminal.end_scrollbar_drag());
+
         window.focus(&self.focus_handle, cx);
         window.prevent_default();
 
@@ -258,20 +276,6 @@ impl TerminalView {
             cx.stop_propagation();
             self.handle_scrollbar_click(event, cx);
             return;
-        }
-
-        if crate::terminal_element::trace_enabled() {
-            let content = &self.terminal.read(cx).last_content;
-            let b = content.terminal_bounds.bounds;
-            eprintln!(
-                "[rt-trace] mousedown ({:.0},{:.0}) term_bounds=({:.0},{:.0})-({:.0},{:.0})",
-                f32::from(event.position.x),
-                f32::from(event.position.y),
-                f32::from(b.origin.x),
-                f32::from(b.origin.y),
-                f32::from(b.origin.x + b.size.width),
-                f32::from(b.origin.y + b.size.height),
-            );
         }
 
         self.terminal.update(cx, |terminal, cx| {
@@ -305,18 +309,24 @@ impl TerminalView {
 
         // If click is on the thumb, start dragging
         if click_y >= thumb_top && click_y <= thumb_top + thumb_height {
-            if crate::terminal_element::trace_enabled() {
-                eprintln!(
-                    "[rt-trace] scrollbar grab click_y={click_y:.0} thumb_top={thumb_top:.0} \
-                     thumb_h={thumb_height:.0} offset={display_offset} history={history_size}"
-                );
-            }
             self.is_dragging_scrollbar = true;
             self.drag_start_y = event.position.y;
             self.drag_start_offset = display_offset;
+            self.drag_history_size = history_size;
+            self.drag_scrollable_track = scrollable_track;
+            self.drag_last_offset = display_offset as f32;
             // 拖动期间让解析线程暂停：拖动帧要独占数据锁重排网格，
             // 否则和刷屏解析反复抢锁，表现成「动一段、卡一段」。
-            self.terminal.read(cx).set_ui_dragging(true);
+            // 同时把几何存进 Terminal，供窗口级鼠标兜底在界外继续驱动。
+            self.terminal.update(cx, |terminal, _| {
+                terminal.set_ui_dragging(true);
+                terminal.begin_scrollbar_drag(crate::ScrollbarDragGeometry {
+                    start_y: event.position.y,
+                    start_offset: display_offset,
+                    history_size,
+                    scrollable_track,
+                });
+            });
         } else {
             // Click on track: scroll page up/down
             let thumb_center = thumb_top + thumb_height / 2.0;
@@ -336,7 +346,10 @@ impl TerminalView {
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if self.is_dragging_scrollbar {
             self.is_dragging_scrollbar = false;
-            self.terminal.read(cx).set_ui_dragging(false);
+            self.terminal.update(cx, |terminal, _| {
+                terminal.set_ui_dragging(false);
+                terminal.end_scrollbar_drag();
+            });
             cx.notify();
             return;
         }
@@ -382,47 +395,29 @@ impl TerminalView {
     }
 
     fn handle_scrollbar_drag(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
-        let content = &self.terminal.read(cx).last_content;
-        let history_size = content.history_size;
-        let visible_lines = content.terminal_bounds.num_lines();
-        let track_height = f32::from(content.terminal_bounds.height());
-
-        if history_size == 0 || track_height <= 0.0 {
-            return;
-        }
-
-        let total_lines = history_size + visible_lines;
-        let thumb_height = (visible_lines as f32 / total_lines as f32 * track_height)
-            .max(SCROLLBAR_THUMB_MIN_HEIGHT);
-        let scrollable_track = track_height - thumb_height;
-
-        if scrollable_track <= 0.0 {
+        if self.drag_history_size == 0 || self.drag_scrollable_track <= 0.0 {
             return;
         }
 
         let dy = f32::from(event.position.y - self.drag_start_y);
-        let ratio = dy / scrollable_track;
         // Moving thumb down means scrolling towards bottom (decreasing offset)
-        let target_offset =
-            (self.drag_start_offset as f32 - ratio * history_size as f32).round() as i32;
-        let target_offset = target_offset.clamp(0, history_size as i32) as usize;
+        let target_offset = scrollbar_drag_offset(
+            self.drag_start_offset,
+            self.drag_history_size,
+            dy,
+            self.drag_scrollable_track,
+        );
 
-        if crate::terminal_element::trace_enabled() {
-            let n = DRAG_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-            let now = now_ms();
-            let last = DRAG_REPORT_MS.load(std::sync::atomic::Ordering::Relaxed);
-            if now.saturating_sub(last) >= 250 {
-                DRAG_REPORT_MS.store(now, std::sync::atomic::Ordering::Relaxed);
-                eprintln!(
-                    "[rt-trace] drag n={n} dy={dy:.0} target={target_offset} \
-                     shown={} history={history_size}",
-                    content.display_offset
-                );
-            }
+        // 目标已是浮点行：亚像素变化也要响应，画面才能逐像素跟随。
+        // 只吞掉完全没有变化的事件（含浮点），避免无谓重绘。
+        let delta_rows = (target_offset - self.drag_last_offset).abs();
+        if delta_rows < 0.001 {
+            return;
         }
+        self.drag_last_offset = target_offset;
 
         self.terminal.update(cx, |terminal, _| {
-            terminal.scroll_to_offset(target_offset);
+            terminal.scroll_to_offset_fractional(target_offset);
         });
         cx.notify();
     }
@@ -586,6 +581,17 @@ impl Focusable for TerminalView {
 
 impl Render for TerminalView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 鼠标按住期间即使短时没有新位移事件，也继续提交下一帧；真实拖动中
+        // 平台可能合并/暂缓指针事件，单靠事件触发会让视口长时间不刷新。
+        // Paint 阶段的窗口级 mouse-up 兜底会清掉共享标志，随后动画自然停止。
+        if self.is_dragging_scrollbar {
+            if self.terminal.read(cx).is_ui_dragging() {
+                window.request_animation_frame();
+            } else {
+                self.is_dragging_scrollbar = false;
+            }
+        }
+
         let terminal = self.terminal.clone();
         let focus_handle = self.focus_handle.clone();
         let is_focused = self.focus_handle.is_focused(window);
@@ -631,5 +637,46 @@ impl Render for TerminalView {
                 self.text_style.clone(),
                 self.scrollbar_hovered || self.is_dragging_scrollbar,
             ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scrollbar_drag_offset;
+
+    #[test]
+    fn scrollbar_drag_mapping_uses_fixed_history_geometry() {
+        let start_offset = 300_000;
+        let history_at_grab = 400_000;
+        let scrollable_track = 600.0;
+
+        // 半程向下应稳定映射到一半历史偏移；后续日志增长不能改动这一比例。
+        assert_eq!(
+            scrollbar_drag_offset(start_offset, history_at_grab, 300.0, scrollable_track,),
+            100_000.0,
+        );
+        assert_eq!(
+            scrollbar_drag_offset(start_offset, history_at_grab, 900.0, scrollable_track,),
+            0.0,
+        );
+        assert_eq!(
+            scrollbar_drag_offset(start_offset, history_at_grab, -900.0, scrollable_track,),
+            history_at_grab as f32,
+        );
+    }
+
+    #[test]
+    fn scrollbar_drag_keeps_subline_precision() {
+        // 拖动 1 像素应产生小数行的变化，而不是被 round 成整行吞掉。
+        // 历史 10000 行、轨道 730px 时，1px ≈ 13.7 行——这里用同样的比例
+        // 验证返回值确实带小数，供渲染层做亚像素平移。
+        let start_offset = 0;
+        let history_at_grab = 10_000;
+        let scrollable_track = 730.0;
+        let one_px = scrollbar_drag_offset(start_offset, history_at_grab, -1.0, scrollable_track);
+        assert!(
+            one_px > 0.0 && one_px.fract().abs() > 0.001,
+            "1px 拖动应产生带小数的行偏移，实际 {one_px}"
+        );
     }
 }
