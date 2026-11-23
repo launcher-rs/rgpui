@@ -347,7 +347,6 @@ impl TerminalView {
         if self.is_dragging_scrollbar {
             self.is_dragging_scrollbar = false;
             self.terminal.update(cx, |terminal, _| {
-                terminal.set_ui_dragging(false);
                 terminal.end_scrollbar_drag();
             });
             cx.notify();
