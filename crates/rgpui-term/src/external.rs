@@ -57,6 +57,8 @@ const PARSE_SLICE_BYTES: usize = 8192;
 
 const UI_GRACE_SLICE: Duration = Duration::from_millis(1);
 const UI_YIELD_TIMEOUT: Duration = Duration::from_millis(25);
+/// 拖动暂停解析的最长时间。正常松手会清 `ui_dragging`；这里兜底防标志卡死。
+const UI_DRAG_PAUSE_MAX: Duration = Duration::from_secs(2);
 
 /// 终端 → 传输层 方向的消息（等价于写本地 PTY 的字节与尺寸控制）。
 ///
@@ -283,7 +285,14 @@ fn external_loop(
                     if sync_stats.ui_dragging.load(Ordering::Relaxed) {
                         drop(term);
                         drop(lease.take());
-                        while sync_stats.ui_dragging.load(Ordering::Relaxed) {
+                        // 兜底超时：正常松手会由 end_scrollbar_drag 清标志，但
+                        // 万一某个鼠标事件路径漏了（窗口失焦、系统吞掉 mouse_up），
+                        // 无限等待会让解析线程永久停摆——远端进程其实已被 ^C 杀掉，
+                        // 画面却再也不刷新，表现为「Ctrl+C 终止不了」。
+                        let deadline = Instant::now() + UI_DRAG_PAUSE_MAX;
+                        while sync_stats.ui_dragging.load(Ordering::Relaxed)
+                            && Instant::now() < deadline
+                        {
                             std::thread::sleep(UI_GRACE_SLICE);
                         }
                         lease = Some(terminal.lease());
@@ -660,6 +669,39 @@ mod tests {
             }
         }
         assert!(seen, "松开拖动后应继续解析并更新网格");
+    }
+
+    /// 拖动标志卡住（鼠标事件丢失、窗口失焦等）时，解析线程靠超时自恢复。
+    ///
+    /// 没有这个兜底，`external_loop` 会永久停在 `while ui_dragging { sleep }`：
+    /// ^C 其实已经发到远端把进程杀掉了，但画面再也不刷新、shell 提示符回不来，
+    /// 表现就是「Ctrl+C 终止不了」（拖出终端右缘松手最容易触发）。
+    #[test]
+    fn stuck_drag_flag_resumes_parsing_after_timeout() {
+        let (terminal, proxy, _events) = make_term();
+        let stats = fresh_stats();
+        let (feed, _writer, _rx) = spawn_feed_loop(terminal.clone(), proxy, stats.clone());
+
+        // 模拟松手漏清标志：置位后既不喂新字节，也不主动清。
+        stats.ui_dragging.store(true, Ordering::Relaxed);
+        assert!(feed.feed("after stuck drag".as_bytes()));
+
+        // 兜底超时是 2s；留足余量等解析恢复并把字节写进网格。
+        let mut seen = false;
+        for _ in 0..400 {
+            sleep(Duration::from_millis(10));
+            let term = terminal.lock();
+            let text: String = (0..16).map(|i| term.grid()[Line(0)][Column(i)].c).collect();
+            drop(term);
+            if text == "after stuck drag" {
+                seen = true;
+                break;
+            }
+        }
+        assert!(
+            seen,
+            "拖动标志卡住时解析线程应在超时后自恢复，否则画面冻结、Ctrl+C 看似失效"
+        );
     }
 
     /// 拖动滚动条 + 持续刷屏：解析暂停期间 UI 每帧都能拿到数据锁。

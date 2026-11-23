@@ -1133,10 +1133,17 @@ impl Terminal {
         self.scrollbar_drag = Some(geom);
     }
 
-    /// 结束滚动条拖动，清掉几何与亚像素残留。
+    /// 结束滚动条拖动，清掉几何与亚像素残留，并恢复解析线程。
+    ///
+    /// 解析暂停标志必须和拖动几何一起清：元素级 mouse_up 只在指针停在终端内
+    /// 时触发，而滚动条贴在右缘，拖出界松手时只有窗口级兜底会调到这里。
+    /// 早先兜底只清几何、不清标志，解析线程就在 `external_loop` 的
+    /// `while ui_dragging { sleep }` 里永久停住——^C 其实已经发到远端把进程
+    /// 杀掉了，但画面再也不刷新，shell 提示符回不来，看起来就是「ctrl+c 终止不了」。
     pub(crate) fn end_scrollbar_drag(&mut self) {
         self.scrollbar_drag = None;
         self.drag_subline = px(0.);
+        self.set_ui_dragging(false);
     }
 
     pub(crate) fn has_scrollbar_drag(&self) -> bool {
