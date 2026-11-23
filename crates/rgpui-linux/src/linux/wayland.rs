@@ -7,6 +7,7 @@ mod client;
 mod clipboard;
 mod cursor;
 mod display;
+mod mapping;
 mod popup;
 mod serial;
 mod window;

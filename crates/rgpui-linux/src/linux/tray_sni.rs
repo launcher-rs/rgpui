@@ -106,19 +106,37 @@ impl Sni {
         ObjectPath::from_str_unchecked(MENU_PATH).into()
     }
 
+    /// KDE 在托盘交互前传入有效的 Wayland 激活令牌，供下一次交互消费。
+    #[zbus(name = "ProvideXdgActivationToken")]
+    async fn provide_xdg_activation_token(&self, token: String) {
+        self.shared.lock().activation_token = (!token.is_empty()).then_some(token);
+    }
+
     /// 主机报告图标被左键单击
     async fn activate(&self, _x: i32, _y: i32) {
-        push_event(&self.events, TrayEvent::Icon(TrayIconEvent::LeftClick));
+        let token = self.shared.lock().activation_token.take();
+        push_event(
+            &self.events,
+            TrayEvent::Icon(TrayIconEvent::LeftClick, token),
+        );
     }
 
     /// 主机报告图标被左键双击
     async fn secondary_activate(&self, _x: i32, _y: i32) {
-        push_event(&self.events, TrayEvent::Icon(TrayIconEvent::DoubleClick));
+        let token = self.shared.lock().activation_token.take();
+        push_event(
+            &self.events,
+            TrayEvent::Icon(TrayIconEvent::DoubleClick, token),
+        );
     }
 
     /// 主机报告图标被右键单击
     async fn context_menu(&self, _x: i32, _y: i32) {
-        push_event(&self.events, TrayEvent::Icon(TrayIconEvent::RightClick));
+        let token = self.shared.lock().activation_token.take();
+        push_event(
+            &self.events,
+            TrayEvent::Icon(TrayIconEvent::RightClick, token),
+        );
     }
 
     /// 图标已变化，请主机重新读取 `Icon*` 属性
@@ -216,12 +234,15 @@ impl DBusMenu {
         if event_id != "clicked" {
             return;
         }
-        let action_id = self.shared.lock().find_action_id(id);
+        let (action_id, token) = {
+            let mut shared = self.shared.lock();
+            (shared.find_action_id(id), shared.activation_token.take())
+        };
         let Some(action_id) = action_id else {
             log::debug!("dbusmenu id {id} 没有对应的应用侧菜单项标识");
             return;
         };
-        push_event(&self.events, TrayEvent::MenuAction(action_id));
+        push_event(&self.events, TrayEvent::MenuAction(action_id, token));
     }
 
     /// 主机即将展示某个子菜单；本实现始终预先构建好布局，无需增量更新
@@ -403,4 +424,102 @@ pub(crate) async fn serve(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 验证 KDE 扩展方法确实暴露在 D-Bus 接口中，避免仅 Rust 方法可调用。
+    #[test]
+    fn activation_token_method_is_exported() {
+        use ashpd::zbus::object_server::Interface;
+        let (events, _receiver) = calloop::channel::channel();
+        let sni = Sni {
+            shared: Arc::new(Mutex::new(SniShared::new())),
+            events,
+        };
+        let mut xml = String::new();
+        sni.introspect_to_writer(&mut xml, 0);
+        assert!(xml.contains("method name=\"ProvideXdgActivationToken\""));
+    }
+
+    // 每次点击携带自己的令牌，后续点击不得复用已消费的令牌。
+    #[test]
+    fn icon_activation_token_is_consumed_once() {
+        let (events, receiver) = calloop::channel::channel();
+        let sni = Sni {
+            shared: Arc::new(Mutex::new(SniShared::new())),
+            events,
+        };
+        smol::block_on(async {
+            sni.provide_xdg_activation_token("first".into()).await;
+            sni.activate(0, 0).await;
+            sni.activate(0, 0).await;
+        });
+        assert!(
+            matches!(receiver.try_recv(), Ok(TrayEvent::Icon(TrayIconEvent::LeftClick, Some(token))) if token == "first")
+        );
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(TrayEvent::Icon(TrayIconEvent::LeftClick, None))
+        ));
+    }
+
+    // 菜单打开和悬停不能提前消费令牌；点击才把令牌连同菜单标识送到主线程。
+    #[test]
+    fn menu_activation_token_survives_non_click_events() {
+        let (events, receiver) = calloop::channel::channel();
+        let shared = Arc::new(Mutex::new(SniShared::new()));
+        shared.lock().menu.push(MenuNode {
+            id: 1,
+            label: "Show".into(),
+            type_: "standard",
+            enabled: true,
+            visible: true,
+            toggle_type: None,
+            toggle_state: None,
+            action_id: Some("show".into()),
+            children: Vec::new(),
+        });
+        let sni = Sni {
+            shared: shared.clone(),
+            events: events.clone(),
+        };
+        let menu = DBusMenu { shared, events };
+        smol::block_on(async {
+            sni.provide_xdg_activation_token("menu".into()).await;
+            menu.about_to_show(0).await;
+            menu.event(1, "hovered".into(), 0i32.into(), 0).await;
+            assert!(receiver.try_recv().is_err());
+            menu.event(1, "clicked".into(), 0i32.into(), 0).await;
+            menu.event(1, "clicked".into(), 0i32.into(), 0).await;
+        });
+        assert!(
+            matches!(receiver.try_recv(), Ok(TrayEvent::MenuAction(id, Some(token))) if id == "show" && token == "menu")
+        );
+        assert!(matches!(receiver.try_recv(), Ok(TrayEvent::MenuAction(id, None)) if id == "show"));
+    }
+
+    // 空令牌清除待用值，宿主的新令牌覆盖旧值。
+    #[test]
+    fn empty_or_new_token_replaces_pending_token() {
+        let (events, receiver) = calloop::channel::channel();
+        let sni = Sni {
+            shared: Arc::new(Mutex::new(SniShared::new())),
+            events,
+        };
+        smol::block_on(async {
+            sni.provide_xdg_activation_token("old".into()).await;
+            sni.provide_xdg_activation_token(String::new()).await;
+            sni.activate(0, 0).await;
+            sni.provide_xdg_activation_token("old".into()).await;
+            sni.provide_xdg_activation_token("new".into()).await;
+            sni.activate(0, 0).await;
+        });
+        assert!(matches!(receiver.try_recv(), Ok(TrayEvent::Icon(_, None))));
+        assert!(
+            matches!(receiver.try_recv(), Ok(TrayEvent::Icon(_, Some(token))) if token == "new")
+        );
+    }
 }

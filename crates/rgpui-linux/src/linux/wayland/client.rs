@@ -76,7 +76,7 @@ use xkbcommon::xkb::{self, KEYMAP_COMPILE_NO_FLAGS, Keycode};
 
 use super::{
     display::WaylandDisplay,
-    window::{ImeInput, WaylandWindowStatePtr},
+    window::{ImeInput, SurfaceCallback, WaylandWindowStatePtr},
 };
 
 use crate::linux::{
@@ -1104,7 +1104,7 @@ impl LinuxClient for WaylandClient {
             state.windows.values().cloned().collect::<Vec<_>>()
         };
         for window in windows {
-            window.minimize_window();
+            window.hide_window();
         }
     }
 
@@ -1281,24 +1281,24 @@ delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
 
-impl Dispatch<WlCallback, ObjectId> for WaylandClientStatePtr {
+impl Dispatch<WlCallback, SurfaceCallback> for WaylandClientStatePtr {
     fn event(
         state: &mut WaylandClientStatePtr,
         _: &wl_callback::WlCallback,
         event: wl_callback::Event,
-        surface_id: &ObjectId,
+        callback: &SurfaceCallback,
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
         let client = state.get_client();
         let mut state = client.borrow_mut();
-        let Some(window) = get_window(&mut state, surface_id) else {
+        let Some(window) = get_window(&mut state, &callback.surface_id) else {
             return;
         };
         drop(state);
 
         if let wl_callback::Event::Done { .. } = event {
-            window.frame();
+            window.handle_surface_callback(callback);
         }
     }
 }
@@ -1508,8 +1508,8 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for WaylandClie
                     let Some(window) = get_window(&mut state, &window) else {
                         return;
                     };
-                    let activation = state.globals.activation.as_ref().unwrap();
-                    activation.activate(token, &window.surface());
+                    drop(state);
+                    window.activate_with_token(token);
                 }
                 None => log::error!("activation token received with no pending activation"),
             }
