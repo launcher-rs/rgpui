@@ -2,6 +2,29 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.8.2] - 2026-11-23
+
+本版为维护版，所有发布 crate 统一到 1.8.2。
+
+### 修复
+
+- **Linux/Wayland 托盘恢复窗口**（issue #89）：实现 StatusNotifierItem 的
+  `ProvideXdgActivationToken`，接收 Plasma/KWin 在点击托盘菜单时下发的有效
+  xdg-activation 令牌；避免应用自造令牌因 serial 过期被合成器拒绝。激活时不再
+  依赖 `app_id` 前置条件，并对缓存 serial 做时效过滤。隐藏到托盘改为真正
+  `unmap`，窗口不再残留于任务切换器。
+- Linux 托盘菜单注册时序：延迟 300ms 启动 SNI 服务，避免主机在图标/菜单就绪前
+  拉取到空菜单导致菜单永久打不开；延迟注册成功后补发状态信号。
+- **终端长历史日志拖动滚动条卡顿**（#90）：消除 `rgpui-term` 滚动时的重复布局计算。
+- CI：固定 Ubuntu runner 到 24.04，规避 `ubuntu-latest` 滚动到 26.04 后的 apt 源故障。
+
+### 其他
+
+- `examples/tray` 完善窗口内按钮（隐藏到托盘 / 激活窗口 / 退出）与自绘标题栏，
+  便于验证托盘恢复流程。
+- README 与仓库 About 调整 macOS 表述：平台代码保留，但暂无 macOS 设备做真机验证，
+  暂不承诺 macOS 支持。
+
 ## [1.8.1] - 2026-11-22
 
 本版为依赖升级维护版，rgpui 自身公开 API 未新增或删除；所有发布 crate 统一到 1.8.1。

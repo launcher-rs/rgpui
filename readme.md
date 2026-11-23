@@ -5,7 +5,7 @@
 [![Docs.rs](https://docs.rs/rgpui/badge.svg)](https://docs.rs/rgpui)
 [![License](https://img.shields.io/crates/l/rgpui)](https://github.com/launcher-rs/rgpui/blob/main/LICENSE)
 
-rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、macOS、Linux（X11/Wayland）和 Web/WASM。
+rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、Linux（X11/Wayland）和 Web/WASM。macOS 平台代码保留在仓库中，但项目暂无 macOS 设备，未做真机验证，暂不承诺 macOS 支持。
 
 ## 功能特性
 
@@ -92,7 +92,7 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 
 ### 平台特有
 - **Windows**：Mica/Acrylic 毛玻璃、鼠标穿透（NCHITTEST）、自动启动、窗口扩展样式
-- **macOS**：标签页管理、红绿灯按钮、Dock 徽标、系统字符面板
+- **macOS**（代码保留，暂无设备验证）：标签页管理、红绿灯按钮、Dock 徽标、系统字符面板
 - **Linux**：X11/Wayland 双后端、CSD、layer-shell
 - **Web/WASM**：Canvas 渲染、DOM 覆盖层（文本选择/复制）、tokio 集成
 
