@@ -25,10 +25,9 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::AtomicUsize,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use alacritty_terminal::{
@@ -68,9 +67,16 @@ use crate::{InputOrigin, TerminalMiddleware};
 
 const DEFAULT_SCROLL_HISTORY_LINES: usize = 10_000;
 const MAX_SCROLL_HISTORY_LINES: usize = 100_000;
-static SYNC_LOCK_BUSY: AtomicBool = AtomicBool::new(false);
-static TRACE_KEY_EVENTS: AtomicUsize = AtomicUsize::new(0);
-static TRACE_KEY_INPUTS: AtomicUsize = AtomicUsize::new(0);
+
+/// 一帧渲染取数据锁失败后，在放弃之前最多自旋多久。
+///
+/// 解析线程把一批字节切成 `PARSE_SLICE_BYTES` 小片、片间会释放数据锁，
+/// 但那个窗口只有几十纳秒——一帧只 try 一次几乎必然错过，错过就意味着
+/// 画面停更一整帧（60Hz 下 16ms），快速拖动时正是「滑一段卡一下」的来源。
+/// 这里改成「守着窗口等它开」：持续 try_lock 最多这么久，几乎总能踩中
+/// 某一片的释放点。上限取 2ms，占 60Hz 帧预算的 1/8，即使一次都没抢到
+/// 也不会把本帧拖垮。
+const SYNC_SPIN_TIMEOUT: Duration = Duration::from_millis(2);
 
 /// 数据锁争用的 UI-解析心跳：`sync()` 每帧进门记一次「试图取锁」，
 /// 取到再记一次「取到了」；外联解析循环据此识别「UI 想画但被饿着」，
@@ -342,6 +348,16 @@ impl Deref for IndexedCell {
 /// 终端渲染内容，用于显示。
 ///
 /// 包含渲染终端所需的所有信息：
+/// 滚动条拖动开始时锁定的几何。窗口级鼠标兜底据此把界外指针位置
+/// 换算成滚动目标，与元素级拖动使用同一套映射，手感一致。
+#[derive(Clone, Copy)]
+pub struct ScrollbarDragGeometry {
+    pub start_y: Pixels,
+    pub start_offset: usize,
+    pub history_size: usize,
+    pub scrollable_track: f32,
+}
+
 /// 单元格、光标、选择区域、模式和滚动状态。
 #[derive(Clone)]
 pub struct TerminalContent {
@@ -369,6 +385,9 @@ pub struct TerminalContent {
     pub history_size: usize,
     /// 当前搜索匹配（网格坐标，供渲染高亮）
     pub search_match: Option<SelectionRange>,
+    /// 拖动滚动条时不足一行的亚像素偏移（0..line_height）。
+    /// 渲染时把整个网格下移该值，让画面逐像素跟随鼠标而非按整行跳变。
+    pub subline_offset: Pixels,
 }
 
 impl Default for TerminalContent {
@@ -389,6 +408,7 @@ impl Default for TerminalContent {
             scrolled_to_bottom: true,
             history_size: 0,
             search_match: None,
+            subline_offset: px(0.),
         }
     }
 }
@@ -613,6 +633,8 @@ impl TerminalBuilder {
                 selection_head: None,
                 breadcrumb_text: String::new(),
                 scroll_px: px(0.),
+                drag_subline: px(0.),
+                scrollbar_drag: None,
                 selection_phase: SelectionPhase::Ended,
                 drag_edge: None,
                 drag_edge_task: None,
@@ -683,6 +705,8 @@ impl TerminalBuilder {
             selection_head: None,
             breadcrumb_text: String::new(),
             scroll_px: px(0.),
+                drag_subline: px(0.),
+                scrollbar_drag: None,
             selection_phase: SelectionPhase::Ended,
             drag_edge: None,
             drag_edge_task: None,
@@ -795,8 +819,19 @@ pub struct Terminal {
     pub selection_head: Option<AlacPoint>,
     /// 面包屑文本（终端标题）
     pub breadcrumb_text: String,
-    /// 滚动像素值
+    /// 滚动像素值（滚轮用）
     scroll_px: Pixels,
+    /// 拖动滚动条时的亚行偏移（0..line_height）。
+    ///
+    /// 历史动辄上万行、滑块被压到最小高度后轨道只剩几百像素，
+    /// 若滚动位置只能是整数行，鼠标每移动 1px 画面就要跳十几行，
+    /// 体感是「两组数字交替、停住一下再跳」。这里保留不足一行的部分，
+    /// 渲染时把整个网格下移该偏移，实现逐像素平滑跟随。
+    drag_subline: Pixels,
+    /// 滚动条拖动几何（供窗口级鼠标兜底在终端 hitbox 之外继续驱动滚动）。
+    /// 元素级 on_mouse_move 只在指针 hover 终端时派发，滚动条贴在最右缘，
+    /// 人手拖时稍偏右就越界，事件断流会导致「停住一下再跳」。
+    scrollbar_drag: Option<ScrollbarDragGeometry>,
     /// 选择阶段
     selection_phase: SelectionPhase,
     /// 拖选停在视口上下缘（含首末行）时记下指针与网格边界，供自动滚动定时器复用
@@ -871,15 +906,6 @@ impl Terminal {
     /// 向终端发送输入，附带来源元数据。
     pub fn input_with_origin(&mut self, input: impl Into<Cow<'static, [u8]>>, origin: InputOrigin) {
         let input = input.into();
-        if origin == InputOrigin::Keystroke && std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
-            let count = TRACE_KEY_INPUTS.fetch_add(1, Ordering::Relaxed) + 1;
-            if count <= 3 || count.is_multiple_of(50) {
-                eprintln!(
-                    "[rt-trace] terminal accepted keystroke #{count} bytes={:02x?}",
-                    input.as_ref()
-                );
-            }
-        }
 
         // Detect Enter key from user input to start block tracking
         if matches!(origin, InputOrigin::Keystroke | InputOrigin::Text) && input.as_ref() == b"\x0d"
@@ -901,19 +927,6 @@ impl Terminal {
     /// 常规字符输入通过 InputHandler::replace_text_in_range 处理。
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, option_as_meta: bool) -> bool {
         let esc = to_esc_str(keystroke, &self.last_content.mode, option_as_meta);
-        let trace_count = if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
-            let count = TRACE_KEY_EVENTS.fetch_add(1, Ordering::Relaxed) + 1;
-            if count <= 3 || count.is_multiple_of(50) {
-                eprintln!(
-                    "[rt-trace] terminal received keydown #{count}: key={} mapped={}",
-                    keystroke.key,
-                    esc.is_some()
-                );
-            }
-            Some(count)
-        } else {
-            None
-        };
         if let Some(esc) = esc {
             match esc {
                 Cow::Borrowed(string) => {
@@ -923,9 +936,6 @@ impl Terminal {
                     self.input_with_origin(string.into_bytes(), InputOrigin::Keystroke)
                 }
             };
-            if trace_count.is_some_and(|count| count <= 3 || count.is_multiple_of(50)) {
-                eprintln!("[rt-trace] terminal handled keydown {:?}", keystroke.key);
-            }
             true
         } else {
             false
@@ -981,42 +991,44 @@ impl Terminal {
         // `Wakeup`（同步输出超时路径同样先解锁再发），那一帧的 notify 会重新
         // 渲染并再次尝试取锁；纯同步输出缓冲期间本就没有可见变化。
         self.sync_stats.attempts.fetch_add(1, Ordering::Relaxed);
-        let Some(mut terminal) = term.try_lock_unfair() else {
-            if crate::terminal_element::trace_enabled() {
-                crate::terminal_element::note_sync_early();
+        // 抢不到就短暂自旋重试，而不是整帧放弃（见 SYNC_SPIN_TIMEOUT）。
+        // 解析线程按小片解析、片间释放数据锁，持续 try_lock 几乎总能踩中
+        // 某一个释放点；这比「一帧一次机会、失败就停更 16ms」稳得多。
+        let mut guard = term.try_lock_unfair();
+        if guard.is_none() {
+            let deadline = Instant::now() + SYNC_SPIN_TIMEOUT;
+            let mut spins = 0u32;
+            loop {
+                std::hint::spin_loop();
+                if let Some(g) = term.try_lock_unfair() {
+                    guard = Some(g);
+                    break;
+                }
+                spins += 1;
+                // 每转 64 圈让一次 CPU：纯自旋 2ms 会白烧一个核，
+                // 掺进 yield 既保留重试密度，也给解析线程留调度机会。
+                if spins & 0x3f == 0 {
+                    std::thread::yield_now();
+                }
+                if Instant::now() >= deadline {
+                    break;
+                }
             }
-            if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
-                && !SYNC_LOCK_BUSY.swap(true, Ordering::Relaxed)
-            {
-                eprintln!("[rt-trace] UI sync could not acquire data lock");
-            }
+        }
+        let Some(mut terminal) = guard else {
             return;
         };
         self.sync_stats.successes.fetch_add(1, Ordering::Relaxed);
-        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some()
-            && SYNC_LOCK_BUSY.swap(false, Ordering::Relaxed)
-        {
-            eprintln!("[rt-trace] UI sync acquired data lock again");
-        }
 
-        let sync_t0 = if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() {
-            Some(std::time::Instant::now())
-        } else {
-            None
-        };
         while let Some(event) = self.events.pop_front() {
             self.process_terminal_event(&event, &mut terminal, cx);
         }
-        let events_left = if sync_t0.is_some() {
-            self.events.len()
-        } else {
-            0
-        };
 
         // 渲染前先按输出轮次重定位搜索高亮（新输出/重排会让网格坐标漂移）。
         self.refresh_search(&mut terminal, cx);
 
-        self.last_content = Self::make_content(&terminal, &self.last_content);
+        self.last_content =
+            Self::make_content(&terminal, &self.last_content, self.drag_subline);
 
         // 将当前搜索匹配同步到渲染内容
         self.last_content.search_match = self.search.as_ref().and_then(|search| search.current);
@@ -1026,15 +1038,13 @@ impl Terminal {
 
         drop(terminal);
         self.notify_middlewares_output(&self.last_content);
-        if let Some(t0) = sync_t0 {
-            let ms = t0.elapsed().as_secs_f64() * 1000.0;
-            if ms > 2.0 {
-                eprintln!("[rt-trace] UI sync took {ms:.1}ms events_left={events_left}");
-            }
-        }
     }
 
-    fn make_content(term: &Term<ZedListener>, last_content: &TerminalContent) -> TerminalContent {
+    fn make_content(
+        term: &Term<ZedListener>,
+        last_content: &TerminalContent,
+        subline_offset: Pixels,
+    ) -> TerminalContent {
         let content = term.renderable_content();
 
         let estimated_size = content.display_iter.size_hint().0;
@@ -1064,6 +1074,7 @@ impl Terminal {
             scrolled_to_bottom: content.display_offset == 0,
             history_size: term.history_size(),
             search_match: None,
+            subline_offset,
         }
     }
 
@@ -1113,6 +1124,45 @@ impl Terminal {
             .store(dragging, Ordering::Relaxed);
     }
 
+    /// Whether a scrollbar drag is currently holding the parser back.
+    pub(crate) fn is_ui_dragging(&self) -> bool {
+        self.sync_stats.ui_dragging.load(Ordering::Relaxed)
+    }
+
+    /// 记录滚动条拖动开始时的几何，供窗口级鼠标兜底使用。
+    pub(crate) fn begin_scrollbar_drag(&mut self, geom: ScrollbarDragGeometry) {
+        self.scrollbar_drag = Some(geom);
+    }
+
+    /// 结束滚动条拖动，清掉几何与亚像素残留。
+    pub(crate) fn end_scrollbar_drag(&mut self) {
+        self.scrollbar_drag = None;
+        self.drag_subline = px(0.);
+    }
+
+    pub(crate) fn has_scrollbar_drag(&self) -> bool {
+        self.scrollbar_drag.is_some()
+    }
+
+    /// 窗口级兜底：指针移到终端 hitbox 之外后，用抓取时锁定的几何继续滚动。
+    /// 返回是否真的产生了位移（供调用方决定是否 refresh）。
+    pub(crate) fn drag_scrollbar_to(&mut self, pointer_y: Pixels) -> bool {
+        let Some(geom) = self.scrollbar_drag else {
+            return false;
+        };
+        if geom.history_size == 0 || geom.scrollable_track <= 0.0 {
+            return false;
+        }
+        // 与 terminal_view::scrollbar_drag_offset 同一套映射：
+        // 向下拖（dy>0）→ 朝底部（offset 减小）。
+        let dy = f32::from(pointer_y - geom.start_y);
+        let target = geom.start_offset as f64
+            - (dy as f64 / geom.scrollable_track as f64) * geom.history_size as f64;
+        let target = target.clamp(0.0, geom.history_size as f64) as f32;
+        self.scroll_to_offset_fractional(target);
+        true
+    }
+
     /// 滚轮滚动打一个时间戳；解析线程在滚动后的一小段窗口内暂停。
     pub fn note_ui_scroll(&self) {
         let now = std::time::SystemTime::now()
@@ -1127,7 +1177,29 @@ impl Terminal {
     /// 只入队、不在 UI 线程上取数据锁：拖动每帧都会调用，若在这里阻塞等锁，
     /// 拖动就会被刷屏解析拖住。真正换算成增量发生在 `sync()` 持锁之后。
     pub fn scroll_to_offset(&mut self, target_offset: usize) {
+        // 非拖动来源（翻页、测试）走整数行，并清掉拖动残留的亚行偏移。
+        self.drag_subline = px(0.);
         push_scroll_to_offset(&mut self.events, target_offset);
+    }
+
+    /// 滚动条拖动专用：目标可以是小数行。
+    ///
+    /// 整数部分照旧走事件队列（在 `sync()` 持锁后换算增量），小数部分
+    /// 留在 `drag_subline` 里交给渲染层平移，从而让画面逐像素跟随鼠标，
+    /// 而不是每 1px 跳十几行。
+    pub fn scroll_to_offset_fractional(&mut self, target_rows: f32) {
+        let line_height = f32::from(self.last_content.terminal_bounds.line_height).max(1.0);
+        let rows = target_rows.max(0.0);
+        let base = rows.floor() as usize;
+        let subline = rows - base as f32;
+        // 保留不足一行的部分，交给渲染层平移，消除「停住—跳变」的空档。
+        self.drag_subline = px(subline * line_height);
+        push_scroll_to_offset(&mut self.events, base);
+    }
+
+    /// 清除拖动残留的亚行偏移（松手、翻页时调用）。
+    pub fn clear_drag_subline(&mut self) {
+        self.drag_subline = px(0.);
     }
 
     /// 滚动到终端网格中的特定点。
@@ -1717,6 +1789,8 @@ impl Terminal {
                 cx.emit(event);
             }
             InternalEvent::Scroll(scroll) => {
+                // 滚轮/翻页是整行语义，清掉拖动残留的亚像素偏移。
+                self.drag_subline = px(0.);
                 term.scroll_display(*scroll);
             }
             InternalEvent::ScrollToOffset(target) => {
@@ -1729,6 +1803,7 @@ impl Terminal {
                 }
             }
             InternalEvent::ScrollToAlacPoint(point) => {
+                self.drag_subline = px(0.);
                 term.scroll_to_point(*point);
             }
             InternalEvent::SetSelection(selection) => {

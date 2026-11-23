@@ -39,32 +39,24 @@ use crate::terminal::{SyncStats, ZedListener};
 /// 与 alacritty `event_loop` 一致的单轮持锁解析字节上限。
 const MAX_LOCKED_READ: usize = u16::MAX as usize;
 
-/// UI 正在拖动 / 刚滚过滚轮时，单轮持锁解析的字节上限。
-///
-/// 拖动每一帧都要拿数据锁重排网格。原来拖动期间是「整体停摆，2 秒上限放行
-/// 一批」：停摆期间远端日志不再显示，2 秒一到又整批（最多 64KB）持锁解析，
-/// 恰好把那一帧的 `try_lock` 顶掉 —— 表现就是「拖一段卡一下、再卡一下」。
-///
-/// 改成不停摆、只把每轮持锁切小：锁很快让出来，UI 帧基本不会失手，日志也照常
-/// 往下走，不再有周期性的顿挫。4KB 大约是一屏日志的量级，一次解析的耗时远小于
-/// 一帧的预算。
-const UI_BUSY_LOCKED_READ: usize = 4096;
+/// 单轮解析最多暂存的字节量。拖动时解析会在每个 PARSE_SLICE_BYTES 边界暂停，
+/// 暂存上限只控制预取量，不决定 UI 等多久。
+const UI_BUSY_LOCKED_READ: usize = 256 * 1024;
 
-/// 刷屏让锁：解析一批后若 UI 帧抢锁失败，就在锁外最多站这些毫秒
-/// （1ms 一档，UI 帧取到锁即提前走）。
-/// 上限要大于一个 UI 帧周期（60Hz 约 16ms）：让锁窗口必须能盖住
-/// 下一次帧取锁的时点，否则「忙一段、让几毫秒」会与帧节拍错拍，
-/// 每次取锁都正好撞在解析忙时，UI 反而永远进不来。
+/// 单次持锁解析的字节片大小。
 ///
-/// 触发条件只看 UI 有没有饿着（attempts 涨而 successes 没涨），
-/// 不看这批有没有攒满 64KB：docker logs -f 这类逐行刷屏的字节常被
-/// SSH 拆成小包，`try_recv` 永远凑不满上限，按批次大小触发会让
-/// 让锁逻辑在这些最需要它的场景里从不生效。
-const UI_GRACE_SLICES: u32 = 24;
-/// 拖动让锁的最长等待：必须覆盖一个 UI 帧周期（60Hz ≈ 16.7ms）加余量。
-/// 取 10ms 会在 UI 下次采样前重新持锁，两者节拍错拍（实测帧成功率 ~27%）。
-const UI_YIELD_TIMEOUT: Duration = Duration::from_millis(25);
+/// UI 帧取锁用的是 `try_lock_unfair`（不等），能不能拿到全看解析线程什么时候
+/// 松手。原来一整批 64KB 一次解析完才放锁，解析耗时随内容波动（带颜色/长行的
+/// docker 日志实测单批可到 5~20ms），这期间 UI 的每一帧都必然落空 —— 2500+ 次
+/// 取锁失败、每秒丢十几帧就是这么来的。
+///
+/// 切成 8KB 一片、片间释放数据锁，将单次持锁时间降到亚毫秒级。拖动期间每批解析
+/// 后还会等 UI 实际成功拿锁，避免解析线程重取锁过快，让 UI 每帧都错过这些短间隙。
+/// 片间只做一次 drop + 重新加锁（几十纳秒），吞吐代价可以忽略。
+const PARSE_SLICE_BYTES: usize = 8192;
+
 const UI_GRACE_SLICE: Duration = Duration::from_millis(1);
+const UI_YIELD_TIMEOUT: Duration = Duration::from_millis(25);
 
 /// 终端 → 传输层 方向的消息（等价于写本地 PTY 的字节与尺寸控制）。
 ///
@@ -98,13 +90,7 @@ impl FeedHandle {
     ///
     /// 返回 `false` 表示终端会话已结束、注入被丢弃。
     pub fn feed(&self, bytes: impl Into<Vec<u8>>) -> bool {
-        let bytes = bytes.into();
-        // 只记长度：早先这里把每个字节格式化成十六进制再拼接，单批 64KB 就是
-        // 六万多次分配，光打印就能把刷屏拖垮，诊断数据全被自身开销污染。
-        if crate::terminal_element::trace_enabled() && bytes.len() >= 4096 {
-            eprintln!("[rt-trace] feed len={}", bytes.len());
-        }
-        self.tx.send(LoopMsg::Feed(bytes)).is_ok()
+        self.tx.send(LoopMsg::Feed(bytes.into())).is_ok()
     }
 
     /// 结束终端会话（等价远端进程退出）。
@@ -164,10 +150,7 @@ impl Notify for ExternalPtyWriter {
         if bytes.is_empty() {
             return;
         }
-        let result = self.tx.send(PtyBoundMessage::Input(bytes.into_owned()));
-        if std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some() && result.is_err() {
-            eprintln!("[rt-trace] external writer send failed: receiver dropped");
-        }
+        let _ = self.tx.send(PtyBoundMessage::Input(bytes.into_owned()));
     }
 }
 
@@ -205,8 +188,6 @@ fn external_loop(
     sync_stats: Arc<SyncStats>,
 ) {
     let mut state = ExternalLoopState::default();
-    let trace = std::env::var_os("RUTERM_TRACE_EXTERNAL").is_some();
-    let mut batch_id = 0usize;
     let mut last_attempts = 0u64;
     let mut last_successes = 0u64;
 
@@ -221,13 +202,7 @@ fn external_loop(
             Some(timeout) => match feed_rx.recv_timeout(timeout) {
                 Ok(message) => Some(message),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if trace {
-                        eprintln!("[rt-trace] timeout stop_sync start");
-                    }
                     state.parser.stop_sync(&mut *terminal.lock());
-                    if trace {
-                        eprintln!("[rt-trace] timeout stop_sync done");
-                    }
                     proxy.send_event(AlacTermEvent::Wakeup);
                     continue;
                 }
@@ -242,8 +217,8 @@ fn external_loop(
             },
         };
 
-        // UI 正在拖滚动条 / 刚滚过滚轮：把每轮持锁的解析量切小，让数据锁尽快
-        // 回到 UI 手里。不再整体停摆（见 UI_BUSY_LOCKED_READ 的注释）。
+        // UI 正在拖滚动条 / 刚滚过滚轮时，限制本轮预取字节数。拖动期间会在
+        // 每个解析片前额外检查状态并暂停，滚轮则依靠较小批次尽快把锁交给 UI。
         let now_ms = || {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -288,82 +263,65 @@ fn external_loop(
         }
 
         if !pending.is_empty() {
-            batch_id += 1;
             // 先租约再解锁：防止 UI 线程在本轮解析前反复抢占（镜像 event_loop）。
             // 租约占的就是 `next` 锁，因此这里只能退到 `lock_unfair`（只等 data）：
             // parking_lot 不可重入，持租约再走 `lock()` 会二次加 `next` 自锁，
             // 解析线程就此永不消费，远端字节再也进不了网格。
-            let _lease = terminal.lease();
+            let mut lease = Some(terminal.lease());
             let mut term = terminal
                 .try_lock_unfair()
                 .unwrap_or_else(|| terminal.lock_unfair());
-            if trace {
-                // 每批只留一行「拿到锁」，不再逐块打印：刷屏时一秒几百批，
-                // 光是写 stderr 就能把被测对象本身拖慢，数据全被观测手段污染。
-                eprintln!("[rt-trace] batch {batch_id}");
-            }
 
             let mut processed = 0usize;
             for chunk in pending.iter() {
-                // 每块只记「慢的」：单块解析耗时就是持锁时间，UI 这一帧能不能
-                // 拿到锁全看它。逐块无脑打印会把刷屏拖慢一个数量级。
-                let chunk_t0 = trace.then(std::time::Instant::now);
-                state.parser.advance(&mut *term, chunk);
-                if let Some(t0) = chunk_t0 {
-                    let ms = t0.elapsed().as_secs_f64() * 1000.0;
-                    if ms > 3.0 {
-                        eprintln!(
-                            "[rt-trace] batch {batch_id} advance {} bytes took {ms:.1}ms",
-                            chunk.len()
-                        );
+                // 按片解析、片间松手：单次持锁从「一整批最多 64KB」降到
+                // 「一片 8KB」。UI 侧的自旋重试正是靠这些间隙插进来的。
+                for slice in chunk.chunks(PARSE_SLICE_BYTES) {
+                    // 刷屏与鼠标事件并行时，等待一帧成功拿锁仍会让快速拖动偶尔
+                    // 错过整帧。拖动期间直接暂停解析，并同时归还 data/next 两把锁；
+                    // 远端字节留在 feed 通道里，松手后继续解析，不会丢日志。
+                    if sync_stats.ui_dragging.load(Ordering::Relaxed) {
+                        drop(term);
+                        drop(lease.take());
+                        while sync_stats.ui_dragging.load(Ordering::Relaxed) {
+                            std::thread::sleep(UI_GRACE_SLICE);
+                        }
+                        lease = Some(terminal.lease());
+                        term = terminal.lock_unfair();
                     }
+                    state.parser.advance(&mut *term, slice);
+                    processed += slice.len();
+                    // 释放数据锁后立刻重新获取：锁空出来的一瞬，UI 的
+                    // try_lock 才可能成功。`_lease` 仍持着 next 队列锁，
+                    // 所以这里只能用 lock_unfair（见上方租约注释）。
+                    drop(term);
+                    term = terminal.lock_unfair();
                 }
-                processed += chunk.len();
             }
 
             // 全部字节都被收入同步缓冲时没有可见变化，无需重绘（镜像 event_loop L166）。
             if state.parser.sync_bytes_count() < processed && processed > 0 {
                 proxy.send_event(AlacTermEvent::Wakeup);
             }
+            drop(term);
+            drop(lease);
         }
 
-        // 拖动滚动条期间：每解析一小批就把数据锁交还 UI，并等 UI 真正取走
-        // 一次（successes 前进）再解析下一批。拖动帧因此能逐帧拿到锁（接近
-        // 60Hz），不再与解析批次错拍成「动一段、卡一段」。
-        //
-        // 只做「每批让锁」还不够：4KB 小批解析极快，解析线程几乎立刻又去抢锁，
-        // UI 的 60Hz 采样会与批次节拍错拍，大约隔帧才抢得到（实测 ~30Hz）。
-        // 这里显式等 UI 取走一次，把节拍对齐到 UI 帧上。10ms 超时兜底：
-        // UI 停手（最小化、拖动已结束但标志未清）时也不会把解析卡死。
         let dragging = sync_stats.ui_dragging.load(Ordering::Relaxed);
-        if dragging {
-            let target = sync_stats.successes.load(Ordering::Relaxed) + 1;
-            let deadline = Instant::now() + UI_YIELD_TIMEOUT;
-            while sync_stats.successes.load(Ordering::Relaxed) < target && Instant::now() < deadline
-            {
-                std::thread::sleep(UI_GRACE_SLICE);
-            }
-            if trace {
-                eprintln!("[rt-trace] batch {batch_id} drag yield to UI");
-            }
-        }
 
-        // 非拖动刷屏让锁（见函数头注释）：只要上一段窗口里 UI 帧试过取锁却没抢到
+        // 非拖动刷屏时让锁（见函数头注释）：只要上一段窗口里 UI 帧试过取锁却没抢到
         // （attempts 涨、successes 没涨），下一批取锁之前就在锁外站一会儿，
         // 让 UI 把帧画出来、把排队的滚动/复制事件处理掉。
         // 不再以「本批攒满 64KB」为前提：逐行小包刷屏时该条件几乎永不成立，
-        // UI 会连续多帧取不到锁，拖动滚动条就卡住。
+        // 让锁逻辑在这些最需要它的场景里从不生效。
         let attempts = sync_stats.attempts.load(Ordering::Relaxed);
         let successes = sync_stats.successes.load(Ordering::Relaxed);
         if !dragging && attempts > last_attempts && successes == last_successes {
-            if trace {
-                eprintln!("[rt-trace] batch {batch_id} grace park for a UI frame");
-            }
-            for _ in 0..UI_GRACE_SLICES {
+            let deadline = Instant::now() + UI_YIELD_TIMEOUT;
+            while sync_stats.successes.load(Ordering::Relaxed) == successes
+                && Instant::now() < deadline
+            {
                 std::thread::sleep(UI_GRACE_SLICE);
-                if sync_stats.successes.load(Ordering::Relaxed) > successes {
-                    break;
-                }
             }
         }
         // 基线每批都推进（不只是让锁那批）：否则 UI 两次帧之间攒下的
@@ -667,7 +625,7 @@ mod tests {
         );
     }
 
-    /// 拖滚动条期间解析线程必须让出数据锁，松手后接着解析且不丢字节。
+    /// 拖滚动条期间解析线程暂停，松手后接着解析且不丢字节。
     #[test]
     fn dragging_scrollbar_still_feeds_the_grid() {
         let (terminal, proxy, _events) = make_term();
@@ -677,11 +635,14 @@ mod tests {
         stats.ui_dragging.store(true, Ordering::Relaxed);
         assert!(feed.feed("during drag".as_bytes()));
 
-        // 拖动期间不再整体停摆：字节照常进网格，只是每轮持锁切到
-        // UI_BUSY_LOCKED_READ，好把数据锁频繁让回 UI。
-        // 早先的实现会一直停到 2 秒上限才放行第一批 —— 那一批又整块持锁，
-        // 恰好顶掉拖动帧，表现成「拖一段卡一下」。这里卡 400ms 上限：
-        // 只要还在停摆，这条断言必然超时。
+        // 拖动中终端网格保持稳定；释放拖动标志后，队列数据应恢复解析。
+        sleep(Duration::from_millis(40));
+        let term = terminal.lock();
+        let text: String = (0..11).map(|i| term.grid()[Line(0)][Column(i)].c).collect();
+        assert_ne!(text, "during drag", "拖动期间不应继续更新终端网格");
+        drop(term);
+
+        stats.ui_dragging.store(false, Ordering::Relaxed);
         let mut seen = false;
         for _ in 0..40 {
             sleep(Duration::from_millis(10));
@@ -693,17 +654,14 @@ mod tests {
                 break;
             }
         }
-        stats.ui_dragging.store(false, Ordering::Relaxed);
-        assert!(seen, "拖动期间网格应照常更新（不能整体停摆）");
+        assert!(seen, "松开拖动后应继续解析并更新网格");
     }
 
-    /// 拖动滚动条 + 持续刷屏：UI 每帧都要尽量拿到数据锁（帧节拍）。
+    /// 拖动滚动条 + 持续刷屏：解析暂停期间 UI 每帧都能拿到数据锁。
     ///
     /// 这是 issue #1「拖一段卡一下、再卡一下」的直接量化。拖动时 UI 帧要
     /// 连续拿到锁（接近 60Hz）；一旦隔帧才拿到一次，就表现为「动一段、卡一段」。
-    /// 只有刷屏让锁（grace park）时，整批 64KB 解析期间 UI 全被挡在锁外，
-    /// 每批只能捡一帧 → 约 30Hz、成段卡顿；拖动期间把每轮持锁切到 4KB
-    /// （`UI_BUSY_LOCKED_READ`）后，锁在批间频繁回到 UI，帧成功率应显著回升。
+    /// 检查拖动 + 洪泛时没有后台解析与 UI 争用数据锁。
     #[test]
     fn dragging_scrollbar_under_flood_keeps_frame_cadence() {
         let (terminal, proxy, _events) = make_term();
@@ -720,8 +678,9 @@ mod tests {
             }
         });
 
-        // 模拟「正在拖滚动条」。
+        // 模拟「正在拖滚动条」并等待解析线程检查到标志。
         stats.ui_dragging.store(true, Ordering::Relaxed);
+        sleep(Duration::from_millis(10));
 
         // 模拟 UI：60Hz 一帧，进门记 attempts，取到锁记 successes 并按帧重绘持锁
         // ~2ms。同时记录最长连续丢帧段，量化「卡」的成段程度。
@@ -752,9 +711,8 @@ mod tests {
         let (successes, frames, max_miss) = ui.join().expect("UI 模拟线程 panic");
         feeder.join().expect("feed 线程 panic");
         stats.ui_dragging.store(false, Ordering::Relaxed);
-        eprintln!("[cadence] drag+flood: {successes}/{frames} 帧抢到锁，最长连丢 {max_miss} 帧");
         assert!(
-            successes * 4 >= frames * 3, // >= 75%
+            successes == frames,
             "拖动刷屏时 UI 只抢到 {successes}/{frames} 帧（最长连丢 {max_miss} 帧），拖动仍会成段卡顿"
         );
     }

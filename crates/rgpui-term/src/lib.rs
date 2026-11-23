@@ -17,8 +17,8 @@ pub use config::{TerminalConfig, TerminalTheme, TerminalThemeConfig, hsla_from_r
 pub use external::{ExternalHandles, FeedHandle, PtyBoundMessage, PtyBoundReceiver};
 pub use middleware::{InputOrigin, TerminalMiddleware};
 pub use terminal::{
-    Event, IndexedCell, SearchStatus, Terminal, TerminalBounds, TerminalBuilder, TerminalContent,
-    ZedListener,
+    Event, IndexedCell, ScrollbarDragGeometry, SearchStatus, Terminal, TerminalBounds,
+    TerminalBuilder, TerminalContent, ZedListener,
 };
 pub use terminal_element::{TerminalElement, TextStyle, convert_color};
 pub use terminal_view::{
