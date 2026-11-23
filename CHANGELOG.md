@@ -8,19 +8,21 @@
 
 ### 修复
 
-- **Linux/Wayland 托盘恢复窗口**（issue #89）：实现 StatusNotifierItem 的
-  `ProvideXdgActivationToken`，接收 Plasma/KWin 在点击托盘菜单时下发的有效
-  xdg-activation 令牌；避免应用自造令牌因 serial 过期被合成器拒绝。激活时不再
-  依赖 `app_id` 前置条件，并对缓存 serial 做时效过滤。隐藏到托盘改为真正
-  `unmap`，窗口不再残留于任务切换器。
-- Linux 托盘菜单注册时序：延迟 300ms 启动 SNI 服务，避免主机在图标/菜单就绪前
-  拉取到空菜单导致菜单永久打不开；延迟注册成功后补发状态信号。
+- **Linux/Wayland 托盘恢复窗口**（issue #89，#91/#92）：实现 StatusNotifierItem
+  的 `ProvideXdgActivationToken`，接收 Plasma/KWin 在点击托盘菜单时下发的有效
+  xdg-activation 令牌，令牌随托盘事件投递并在本次激活后清空，避免应用自造令牌
+  因 serial 过期被合成器拒绝。隐藏到托盘改为真正 `unmap`（`attach(NULL)` 配合
+  `wl_display.sync` 与窗口映射状态机），窗口不再残留于任务切换器；恢复时重置
+  首次 configure 标志（#92），避免 remap 后首帧不绘制导致窗口卡死。
+- Linux 托盘菜单注册时序（#92）：延迟 300ms 启动 SNI 服务，避免主机在图标/菜单
+  就绪前拉取到空菜单导致菜单永久打不开；延迟注册成功后补发状态信号。
 - **终端长历史日志拖动滚动条卡顿**（#90）：消除 `rgpui-term` 滚动时的重复布局计算。
 - CI：固定 Ubuntu runner 到 24.04，规避 `ubuntu-latest` 滚动到 26.04 后的 apt 源故障。
 
 ### 其他
 
 - `examples/tray` 完善窗口内按钮（隐藏到托盘 / 激活窗口 / 退出）与自绘标题栏，
+  左键不抢焦点以免顶掉主机托盘菜单，并补充 Wayland 隐藏说明与菜单回归步骤，
   便于验证托盘恢复流程。
 - README 与仓库 About 调整 macOS 表述：平台代码保留，但暂无 macOS 设备做真机验证，
   暂不承诺 macOS 支持。
