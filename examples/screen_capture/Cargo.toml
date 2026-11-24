@@ -8,3 +8,6 @@ publish = false
 rgpui = { workspace = true, features = ["screen-capture"] }
 rgpui-platform = { workspace = true, features = ["screen-capture"] }
 image.workspace = true
+
+[lints]
+workspace = true

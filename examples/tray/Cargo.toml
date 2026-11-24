@@ -8,3 +8,6 @@ description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）
 [dependencies]
 rgpui.workspace = true
 rgpui-platform.workspace = true
+
+[lints]
+workspace = true

@@ -9,3 +9,6 @@ description = "窗口管理展示：窗口类型/多窗口/可移动/定位/阴�
 rgpui.workspace = true
 rgpui-platform.workspace = true
 anyhow.workspace = true
+
+[lints]
+workspace = true

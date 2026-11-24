@@ -268,12 +268,9 @@ impl ComponentIntegrationApp {
                                 .small()
                                 .label(theme_name.clone())
                                 .when(is_selected, |btn: Button| btn.primary())
-                                .on_click({
-                                    let theme_name = theme_name.clone();
-                                    cx.listener(move |this, _, _, cx| {
-                                        this.switch_theme(theme_name.clone(), cx);
-                                    })
-                                }),
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.switch_theme(theme_name.clone(), cx);
+                                })),
                         ),
                     );
                 }

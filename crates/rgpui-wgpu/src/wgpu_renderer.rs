@@ -6,7 +6,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use rgpui::{
     AtlasTextureId, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, PaintedPath,
     PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size, SubpixelSprite,
-    Underline, get_gamma_correction_ratios, quad_depth, quad_depth_scale,
+    Underline, get_gamma_correction_ratios, quad_depth_between, quad_depth_scale,
 };
 use std::cell::RefCell;
 use std::num::NonZeroU64;
@@ -717,8 +717,8 @@ impl WgpuRenderer {
         };
 
         // 非 quad 图元的深度态：Greater 且不写。渲染时每批把视口深度钉在 quad
-        // 游标处（见 draw 循环），于是落在不透明矩形之后的整片元在深度测试处
-        // 失败，不会浮在矩形之上。渲染通道挂了深度附件（D2 anti-overdraw），
+        // 游标两侧的中点（见 draw 循环），于是落在不透明矩形之后的整片元在深度
+        // 测试处失败，不会浮在矩形之上。渲染通道挂了深度附件（D2 anti-overdraw），
         // 管线必须声明兼容的深度态；`None` 会被验证拒绝、整批静默丢画。
         let non_quad_depth_stencil = wgpu::DepthStencilState {
             depth_compare: Some(wgpu::CompareFunction::Greater),
@@ -1148,9 +1148,10 @@ impl WgpuRenderer {
                 overflow = !self.draw_opaque_quads(&scene.quads, &mut instance_offset, &mut pass);
                 if !overflow {
                     // 视口深度游标（对齐上游 D2）：Quad 批的顶点着色器逐实例算深度，
-                    // 视口保持 (0,1)；其余批把深度钉在 quad 游标处，落在已画的
-                    // 不透明矩形后面就在深度测试处被剔除。否则非 quad 图元不测
-                    // 深度，会错误浮在插入更晚的不透明矩形之上（z-order 反转）。
+                    // 视口保持 (0,1)；其余批把深度钉在「已画完的最后一个 quad」与
+                    // 「下一个 quad」之间的中点，落在已画的不透明矩形后面就在深度
+                    // 测试处被剔除。否则非 quad 图元不测深度，会错误浮在插入更晚的
+                    // 不透明矩形之上（z-order 反转）。
                     let depth_scale = quad_depth_scale(scene.quads.len());
                     let viewport_width = self.surface_config.width as f32;
                     let viewport_height = self.surface_config.height as f32;
@@ -1159,7 +1160,7 @@ impl WgpuRenderer {
                         let (min_depth, max_depth) = if matches!(&batch, PrimitiveBatch::Quads(_)) {
                             (0.0, 1.0)
                         } else {
-                            let depth = quad_depth(quad_cursor, depth_scale);
+                            let depth = quad_depth_between(quad_cursor, depth_scale);
                             (depth, depth)
                         };
                         pass.set_viewport(

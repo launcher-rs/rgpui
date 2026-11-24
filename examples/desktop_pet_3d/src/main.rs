@@ -616,9 +616,7 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     application()
-        .with_assets(ExampleAssets {
-            base: manifest_dir.clone(),
-        })
+        .with_assets(ExampleAssets { base: manifest_dir })
         .run(move |cx: &mut App| {
             cx.set_keep_alive_without_windows(true);
 
@@ -631,7 +629,6 @@ fn main() {
             // ── 共享状态 ──
             let state = Arc::new(Mutex::new(SharedState::new()));
             let state_for_tray = state.clone();
-            let state_for_movement = state.clone();
             let state_for_close = state.clone();
             let state_for_view = state.clone();
 
@@ -748,9 +745,8 @@ fn main() {
             spawn_3d_render_thread(state.clone(), model_path);
 
             // ── F9 键轮询：切换交互/穿透 ──
-            let toggle_state = state.clone();
             let toggle_handle = window_handle;
-            let toggle_state_loop = toggle_state.clone();
+            let toggle_state_loop = state.clone();
             let toggle_handle_loop = toggle_handle;
             cx.spawn(async move |cx| {
                 let mut was_pressed = false;
@@ -855,7 +851,7 @@ fn main() {
 
             // ── 行走运动循环 ──
             let movement_handle = window_handle;
-            let movement_state = state_for_movement.clone();
+            let movement_state = state;
             cx.spawn(async move |cx| {
                 loop {
                     cx.background_executor()

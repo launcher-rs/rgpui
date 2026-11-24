@@ -11,3 +11,6 @@ unicode-segmentation.workspace = true
 
 [dev-dependencies]
 rgpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

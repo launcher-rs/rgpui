@@ -75,24 +75,26 @@ fn verify_shadow_layout() {
     // order: u32                        offset 0
     // blur_radius: f32                  offset 4
     // bounds: Bounds                    offset 8
-    // corner_radii: Corners             offset 24
-    // content_mask: Bounds              offset 40
-    // color: Hsla                       offset 56
-    // element_bounds: Bounds            offset 72
-    // element_corner_radii: Corners     offset 88
-    // inset: u32                        offset 104
-    // pad: u32                          offset 108
-    // 总大小: 112
-    assert_eq!(size_of::<Shadow>(), 112, "Shadow 大小必须为 112 字节");
+    // shape_bounds: Bounds             offset 24
+    // corner_radii: Corners             offset 40
+    // content_mask: Bounds              offset 56
+    // color: Hsla                       offset 72
+    // element_bounds: Bounds            offset 88
+    // element_corner_radii: Corners     offset 104
+    // inset: u32                        offset 120
+    // pad: u32                          offset 124
+    // 总大小: 128
+    assert_eq!(size_of::<Shadow>(), 128, "Shadow 大小必须为 128 字节");
     assert_eq!(offset_of!(Shadow, order), 0);
     assert_eq!(offset_of!(Shadow, blur_radius), 4);
     assert_eq!(offset_of!(Shadow, bounds), 8);
-    assert_eq!(offset_of!(Shadow, corner_radii), 24);
-    assert_eq!(offset_of!(Shadow, content_mask), 40);
-    assert_eq!(offset_of!(Shadow, color), 56);
-    assert_eq!(offset_of!(Shadow, element_bounds), 72);
-    assert_eq!(offset_of!(Shadow, element_corner_radii), 88);
-    assert_eq!(offset_of!(Shadow, inset), 104);
+    assert_eq!(offset_of!(Shadow, shape_bounds), 24);
+    assert_eq!(offset_of!(Shadow, corner_radii), 40);
+    assert_eq!(offset_of!(Shadow, content_mask), 56);
+    assert_eq!(offset_of!(Shadow, color), 72);
+    assert_eq!(offset_of!(Shadow, element_bounds), 88);
+    assert_eq!(offset_of!(Shadow, element_corner_radii), 104);
+    assert_eq!(offset_of!(Shadow, inset), 120);
 }
 
 #[test]

@@ -13,3 +13,6 @@ rgpui-platform.workspace = true
 anyhow.workspace = true
 reqwest = { workspace = true, optional = true }
 tokio.workspace = true
+
+[lints]
+workspace = true

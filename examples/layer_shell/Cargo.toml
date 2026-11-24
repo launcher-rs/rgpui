@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-[dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 rgpui = { workspace = true, features = ["wayland"] }
+
+[target.'cfg(any(target_os = "linux", target_family = "wasm"))'.dependencies]
 rgpui-platform.workspace = true
+
+[lints]
+workspace = true

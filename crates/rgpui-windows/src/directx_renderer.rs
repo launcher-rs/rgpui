@@ -254,7 +254,8 @@ struct BatchRenderer<'a> {
     context: &'a ID3D11DeviceContext,
     pipelines: &'a mut DirectXRenderPipelines,
     globals: &'a DirectXGlobalElements,
-    /// 视口深度范围按批调整：非 quad 批钉在 quad 游标深度（视口深度游标）。
+    /// 视口深度范围按批调整：非 quad 批钉在 quad 游标两侧的深度中点
+    /// （见 [`rgpui::quad_depth_between`]）。
     viewport: D3D11_VIEWPORT,
     /// 图集纹理视图查询：返回 `None` 时跳过该批精灵（与现有行为一致）。
     atlas_views: &'a dyn Fn(AtlasTextureId) -> Option<[Option<ID3D11ShaderResourceView>; 1]>,
@@ -266,15 +267,16 @@ impl BatchRenderer<'_> {
         self.draw_opaque_quads(scene.quads.len())?;
 
         // 视口深度游标（对齐上游 D2）：Quad 批的顶点着色器逐实例算深度，视口深度
-        // 保持 (0,1)；其余批把视口 MinDepth=MaxDepth 钉在 quad 游标处，落在已画的
-        // 不透明矩形后面就在深度测试处被剔除，不会再浮在矩形之上。
+        // 保持 (0,1)；其余批把视口 MinDepth=MaxDepth 钉在「已画完的最后一个 quad」与
+        // 「下一个 quad」深度之间的中点，于是落在已画的不透明矩形后面就在深度测试处
+        // 被剔除，不会再浮在矩形之上；同时也不会和下一个 quad 撞成同一深度。
         let depth_scale = quad_depth_scale(scene.quads.len());
         let mut quad_cursor: u32 = 0;
         for batch in scene.batches() {
             let depth = if matches!(&batch, PrimitiveBatch::Quads(_)) {
                 None
             } else {
-                Some(quad_depth(quad_cursor, depth_scale))
+                Some(quad_depth_between(quad_cursor, depth_scale))
             };
             if let Some(depth) = depth {
                 self.viewport.MinDepth = depth;
@@ -1106,8 +1108,8 @@ impl DirectXResources {
 impl DirectXRenderPipelines {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
         // 深度态：混合 quad 与所有非 quad 图元都只测不写（Greater，「越大越近」）；
-        // 不透明 quad 测试并写入。非 quad 每批的视口深度钉在 quad 游标处，落在
-        // 不透明矩形之后的片元在深度测试处失败。
+        // 不透明 quad 测试并写入。非 quad 每批的视口深度钉在 quad 游标两侧的中点，
+        // 落在不透明矩形之后的片元在深度测试处失败。
         let quad_depth_state = create_depth_stencil_state(device, true, false)?;
         let non_quad_depth_state = quad_depth_state.clone();
         let opaque_depth_state = create_depth_stencil_state(device, true, true)?;
@@ -2837,6 +2839,182 @@ mod readback_tests {
         assert!(
             px[1] >= 215 && px[0] <= 40 && px[2] <= 40 && px[3] >= 215,
             "后画的不透明绿矩形应盖住先画的红下划线，实际 {px:?}"
+        );
+    }
+
+    /// 外阴影只在自身 shape bounds 外与先画方块重叠时，也必须按完整高斯尾部排序，
+    /// 否则不透明 prepass 会把 halo 沿方块边缘裁成斜楔。
+    #[test]
+    fn shadow_halo_overlaps_earlier_opaque_quad_in_paint_order() {
+        use rgpui::{
+            Bounds, ContentMask, Corners, ScaledPixels, Shadow, hsla, point, size, solid_background,
+        };
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let mut drawer = SceneDrawer::new(&device, &context, (80.0, 64.0));
+        let full = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(ScaledPixels(80.0), ScaledPixels(64.0)),
+        };
+        let earlier = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(20.0)),
+            size: size(ScaledPixels(24.0), ScaledPixels(24.0)),
+        };
+        let shape = Bounds {
+            origin: point(ScaledPixels(32.0), ScaledPixels(20.0)),
+            size: size(ScaledPixels(28.0), ScaledPixels(24.0)),
+        };
+        let blur_radius = ScaledPixels(12.0);
+        let mut scene = Scene::default();
+        scene.insert_primitive(Quad {
+            bounds: earlier,
+            content_mask: ContentMask { bounds: full },
+            background: solid_background(hsla(0.33, 1.0, 0.5, 1.0)),
+            border_color: hsla(0.33, 1.0, 0.5, 1.0),
+            ..Quad::default()
+        });
+        scene.insert_primitive(Shadow {
+            order: 0,
+            blur_radius,
+            bounds: shape.dilate(blur_radius * 3.0),
+            shape_bounds: shape,
+            corner_radii: Corners::default(),
+            content_mask: ContentMask { bounds: full },
+            color: hsla(0.0, 0.0, 0.0, 0.8),
+            element_bounds: shape,
+            element_corner_radii: Corners::default(),
+            inset: 0,
+            pad: 0,
+        });
+        scene.finish();
+        assert!(
+            scene.shadows[0].order > scene.quads[0].order,
+            "halo 与先画方块重叠时，后画阴影必须排在方块之后"
+        );
+
+        let image = drawer.render_full_frame(scene).expect("整帧应能渲染读回");
+        let pixel = image.get_pixel(16, 32).0;
+        assert!(
+            pixel[1] < 245 && pixel[0] < 40 && pixel[2] < 40 && pixel[3] >= 250,
+            "先画绿色方块上的阴影 halo 应可见，实际 {pixel:?}"
+        );
+    }
+
+    /// 外阴影晚于同形状不透明面板绘制时，也不能把模糊后的形状内部涂暗。
+    #[test]
+    fn drop_shadow_does_not_darken_its_shape_interior() {
+        use rgpui::{
+            Bounds, ContentMask, Corners, ScaledPixels, Shadow, hsla, point, size, solid_background,
+        };
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let mut drawer = SceneDrawer::new(&device, &context, (80.0, 64.0));
+        let full = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(ScaledPixels(80.0), ScaledPixels(64.0)),
+        };
+        let shape = Bounds {
+            origin: point(ScaledPixels(24.0), ScaledPixels(20.0)),
+            size: size(ScaledPixels(32.0), ScaledPixels(24.0)),
+        };
+        let blur_radius = ScaledPixels(12.0);
+        let mut scene = Scene::default();
+        scene.insert_primitive(Quad {
+            bounds: shape,
+            content_mask: ContentMask { bounds: full },
+            background: solid_background(hsla(0.33, 1.0, 0.5, 1.0)),
+            border_color: hsla(0.33, 1.0, 0.5, 1.0),
+            ..Quad::default()
+        });
+        scene.insert_primitive(Shadow {
+            order: 0,
+            blur_radius,
+            bounds: shape.dilate(blur_radius * 3.0),
+            shape_bounds: shape,
+            corner_radii: Corners::default(),
+            content_mask: ContentMask { bounds: full },
+            color: hsla(0.0, 0.0, 0.0, 0.8),
+            element_bounds: shape,
+            element_corner_radii: Corners::default(),
+            inset: 0,
+            pad: 0,
+        });
+        scene.finish();
+        assert!(scene.shadows[0].order > scene.quads[0].order);
+
+        let image = drawer.render_full_frame(scene).expect("整帧应能渲染读回");
+        let center = image.get_pixel(40, 32).0;
+        assert!(
+            center[1] >= 245 && center[0] < 40 && center[2] < 40 && center[3] >= 250,
+            "外阴影不应涂暗自身形状内部，实际 {center:?}"
+        );
+        let halo = image.get_pixel(70, 32).0;
+        assert!(
+            halo[3] > 0 && halo[3] < 250,
+            "形状外侧仍应保留可见的阴影 halo，实际 {halo:?}"
+        );
+    }
+
+    /// 多个外阴影必须共用元素边框盒作为裁剪边界，否则双层阴影会被切成两圈分离的环带。
+    #[test]
+    fn multiple_drop_shadows_share_element_clip() {
+        use rgpui::{Bounds, ContentMask, Corners, ScaledPixels, Shadow, hsla, point, size};
+
+        let Some((device, context)) = create_warp_device() else {
+            return;
+        };
+        let mut drawer = SceneDrawer::new(&device, &context, (80.0, 64.0));
+        let full = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(ScaledPixels(80.0), ScaledPixels(64.0)),
+        };
+        let element = Bounds {
+            origin: point(ScaledPixels(20.0), ScaledPixels(20.0)),
+            size: size(ScaledPixels(40.0), ScaledPixels(20.0)),
+        };
+        let shape_far = Bounds {
+            origin: point(ScaledPixels(22.0), ScaledPixels(26.0)),
+            size: size(ScaledPixels(36.0), ScaledPixels(20.0)),
+        };
+        let shape_near = Bounds {
+            origin: point(ScaledPixels(21.0), ScaledPixels(21.0)),
+            size: size(ScaledPixels(38.0), ScaledPixels(20.0)),
+        };
+        let shadow = |shape: Bounds<ScaledPixels>, blur_radius: ScaledPixels| Shadow {
+            order: 0,
+            blur_radius,
+            bounds: shape.dilate(blur_radius * 3.0),
+            shape_bounds: shape,
+            corner_radii: Corners::default(),
+            content_mask: ContentMask { bounds: full },
+            color: hsla(0.0, 0.0, 0.0, 0.8),
+            element_bounds: element,
+            element_corner_radii: Corners::default(),
+            inset: 0,
+            pad: 0,
+        };
+
+        let mut scene = Scene::default();
+        scene.insert_primitive(shadow(shape_far, ScaledPixels(12.0)));
+        scene.insert_primitive(shadow(shape_near, ScaledPixels(6.0)));
+        scene.finish();
+
+        let image = drawer.render_full_frame(scene).expect("整帧应能渲染读回");
+        let inside = image.get_pixel(21, 30).0;
+        assert_eq!(inside[3], 0, "元素内部不应出现阴影环，实际 {inside:?}");
+        let above = image.get_pixel(40, 40).0[3];
+        let below = image.get_pixel(40, 41).0[3];
+        assert!(
+            above > 0 && below > 0,
+            "元素下方应可见阴影: {above}/{below}"
+        );
+        assert!(
+            (above as i16 - below as i16).abs() <= 24,
+            "两层阴影不应在各自形状边界处突变: {above}/{below}"
         );
     }
 

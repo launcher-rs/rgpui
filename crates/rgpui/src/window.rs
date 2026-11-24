@@ -4501,10 +4501,14 @@ impl Window {
                 continue;
             }
             let shadow_bounds = (bounds + shadow.offset).dilate(shadow.spread_radius);
+            let blur_radius = shadow.blur_radius.scale(scale_factor);
+            let shape_bounds = self.cover_bounds(shadow_bounds);
             self.next_frame.scene.insert_primitive(Shadow {
                 order: 0,
-                blur_radius: shadow.blur_radius.scale(scale_factor),
-                bounds: self.cover_bounds(shadow_bounds),
+                blur_radius,
+                // Scene 的排序与图层裁剪必须覆盖着色器实际绘制的 3σ 高斯尾部。
+                bounds: shape_bounds.dilate(blur_radius * 3.0),
+                shape_bounds,
                 content_mask,
                 corner_radii: corner_radii.scale(scale_factor),
                 color: shadow.color.opacity(opacity),
@@ -4549,7 +4553,8 @@ impl Window {
             self.next_frame.scene.insert_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
-                bounds: self.cover_bounds(hole),
+                bounds: element_bounds,
+                shape_bounds: self.cover_bounds(hole),
                 content_mask,
                 corner_radii: hole_corner_radii.scale(scale_factor),
                 color: shadow.color.opacity(opacity),
@@ -8076,10 +8081,10 @@ mod tests {
     };
 
     use crate::{
-        AppContext as _, BackgroundTag, BorderStyle, Bounds, Context, Corners, Edges, FocusHandle,
-        Hsla, InteractiveElement as _, IntoElement, ParentElement, Pixels, Quad, Render, Styled,
-        TestAppContext, Window, WindowOptions, canvas, div, fill, outline, point, px, quad, size,
-        transparent_black,
+        AppContext as _, BackgroundTag, BorderStyle, Bounds, BoxShadow, Context, Corners, Edges,
+        FocusHandle, Hsla, InteractiveElement as _, IntoElement, ParentElement, Pixels, Quad,
+        Render, Shadow, Styled, TestAppContext, Window, WindowOptions, canvas, div, fill, outline,
+        point, px, quad, size, transparent_black,
     };
 
     struct EmptyView;
@@ -8294,6 +8299,25 @@ mod tests {
         }
     }
 
+    struct ShadowPaintHolder {
+        paint: Rc<dyn Fn(&mut Window)>,
+        sink: Rc<RefCell<Vec<Shadow>>>,
+    }
+
+    impl Render for ShadowPaintHolder {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let (paint, sink) = (self.paint.clone(), self.sink.clone());
+            div().size_full().child(canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    let base = window.next_frame.scene.shadows.len();
+                    paint(window);
+                    *sink.borrow_mut() = window.next_frame.scene.shadows[base..].to_vec();
+                },
+            ))
+        }
+    }
+
     /// 在画布元素的绘制阶段调用 `paint_quad`，并把场景里落下的四边形取回来。
     fn painted_quads(cx: &mut TestAppContext, paint: impl 'static + Fn(&mut Window)) -> Vec<Quad> {
         let paint: Rc<dyn Fn(&mut Window)> = Rc::new(paint);
@@ -8307,6 +8331,100 @@ mod tests {
         })
         .unwrap();
         sink.take()
+    }
+
+    /// 在画布元素的绘制阶段调用阴影绘制，并取回本次新增的阴影图元。
+    fn painted_shadows(
+        cx: &mut TestAppContext,
+        paint: impl 'static + Fn(&mut Window),
+    ) -> Vec<Shadow> {
+        let paint: Rc<dyn Fn(&mut Window)> = Rc::new(paint);
+        let sink = Rc::new(RefCell::new(Vec::<Shadow>::new()));
+        let window = cx.add_window({
+            let (paint, sink) = (paint.clone(), sink.clone());
+            move |_, _| ShadowPaintHolder { paint, sink }
+        });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        sink.take()
+    }
+
+    /// 外阴影的场景边界必须包含着色器实际绘制的 3σ 尾部，形状边界保持不变。
+    #[test]
+    fn test_paint_drop_shadow_includes_gaussian_tail_in_scene_bounds() {
+        let mut cx = TestAppContext::single();
+        let shadows = painted_shadows(&mut cx, |window| {
+            window.paint_drop_shadows(
+                Bounds {
+                    origin: point(px(10.), px(10.)),
+                    size: size(px(100.), px(60.)),
+                },
+                Corners::all(px(8.)),
+                &[BoxShadow {
+                    color: opaque_red(),
+                    offset: point(px(0.), px(4.)),
+                    blur_radius: px(8.),
+                    spread_radius: px(2.),
+                    inset: false,
+                }],
+            );
+        });
+
+        assert_eq!(shadows.len(), 1);
+        let shadow = shadows[0];
+        assert_eq!(
+            shadow.bounds,
+            shadow.shape_bounds.dilate(shadow.blur_radius * 3.)
+        );
+        assert!(shadow.shape_bounds.size.width.0 > 0. && shadow.shape_bounds.size.height.0 > 0.);
+    }
+
+    /// 内阴影按元素边界光栅化，SDF 仍使用内缩后的孔洞边界。
+    #[test]
+    fn test_paint_inset_shadow_separates_rasterization_and_shape_bounds() {
+        let mut cx = TestAppContext::single();
+        let element_bounds = Bounds {
+            origin: point(px(10.), px(10.)),
+            size: size(px(100.), px(60.)),
+        };
+        let shadows = painted_shadows(&mut cx, move |window| {
+            window.paint_inset_shadows(
+                element_bounds,
+                Corners::all(px(8.)),
+                &[BoxShadow {
+                    color: opaque_red(),
+                    offset: point(px(0.), px(4.)),
+                    blur_radius: px(8.),
+                    spread_radius: px(2.),
+                    inset: true,
+                }],
+            );
+        });
+
+        assert_eq!(shadows.len(), 1);
+        let shadow = shadows[0];
+        let scale = shadow.bounds.size.width.0 / element_bounds.size.width.0;
+        assert_eq!(shadow.inset, 1);
+        assert_eq!(
+            shadow.bounds.size.width.0,
+            element_bounds.size.width.0 * scale
+        );
+        assert_eq!(
+            shadow.bounds.size.height.0,
+            element_bounds.size.height.0 * scale
+        );
+        assert_eq!(
+            shadow.shape_bounds.origin.x.0,
+            shadow.bounds.origin.x.0 + 2. * scale
+        );
+        assert_eq!(
+            shadow.shape_bounds.origin.y.0,
+            shadow.bounds.origin.y.0 + 6. * scale
+        );
+        assert_eq!(shadow.shape_bounds.size.width.0, 96. * scale);
+        assert_eq!(shadow.shape_bounds.size.height.0, 56. * scale);
     }
 
     /// 实心无圆角的矩形直通为单个图元（本身就是不透明深度通道的候选）。

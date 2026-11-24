@@ -27,6 +27,7 @@ test-support = [
     "proptest",
     "dep:git2",
     "dep:postage",
+    "dep:futures-concurrency",
 ]
 # 元素检查器：为元素/窗口附加调试信息（默认 debug_assertions 下也启用）。
 inspector = ["rgpui-macros/inspector"]
@@ -237,7 +238,7 @@ derive_more.workspace = true
 rgpui-macros.workspace = true
 etagere.workspace = true
 futures.workspace = true
-futures-concurrency.workspace = true
+futures-concurrency = { workspace = true, optional = true }
 image.workspace = true
 inventory.workspace = true
 indexmap.workspace = true
@@ -402,6 +403,7 @@ nix = { workspace = true, features = ["user"] }
 [dev-dependencies]
 backtrace.workspace = true
 env_logger.workspace = true
+futures-concurrency.workspace = true
 postage.workspace = true
 pretty_assertions.workspace = true
 rand.workspace = true

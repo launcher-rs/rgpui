@@ -21,26 +21,24 @@ members = [
 
 [workspace.package]
 edition = "2024"
-publish = true
-license = "Apache-2.0"
-version = "1.8.2"
+version = "1.8.3"
 
 # ==================== 工作区依赖 ====================
 [workspace.dependencies]
 # ---- 内部 crates ----
-rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.8.2"}
-rgpui = { path = "crates/rgpui", default-features = false ,version = "1.8.2"}
-rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.8.2" }
-rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.8.2" }
-rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.8.2"}
-rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.8.2"}
-rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.8.2" }
-rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.8.2" }
-rgpui-dom = { path = "crates/rgpui-dom", version = "1.8.2" }
-rgpui-character = {path = "crates/rgpui-character",version = "1.8.2"}
-rgpui-3d = {path = "crates/rgpui-3d",version = "1.8.2"}
-rgpui-term = {path = "crates/rgpui-term", version = "1.8.2"}
-rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.8.2"}
+rgpui-macros = { path = "crates/rgpui-macros" ,version = "1.8.3"}
+rgpui = { path = "crates/rgpui", default-features = false ,version = "1.8.3"}
+rgpui-wgpu = { path = "crates/rgpui-wgpu",version = "1.8.3" }
+rgpui-linux = { path = "crates/rgpui-linux", default-features = false,version = "1.8.3" }
+rgpui-windows = { path = "crates/rgpui-windows", default-features = false ,version = "1.8.3"}
+rgpui-macos = { path = "crates/rgpui-macos", default-features = false ,version = "1.8.3"}
+rgpui-web = { path = "crates/rgpui-web", default-features = false, version = "1.8.3" }
+rgpui-platform = { path = "crates/rgpui-platform", default-features = false,version = "1.8.3" }
+rgpui-dom = { path = "crates/rgpui-dom", version = "1.8.3" }
+rgpui-character = {path = "crates/rgpui-character",version = "1.8.3"}
+rgpui-3d = {path = "crates/rgpui-3d",version = "1.8.3"}
+rgpui-term = {path = "crates/rgpui-term", version = "1.8.3"}
+rgpui-markdown = {path = "crates/rgpui-markdown", version = "1.8.3"}
 
 
 # ---- 辅助功能（AccessKit） ----
@@ -164,8 +162,6 @@ strum = { version = "0.28.0", features = ["derive"] }
 rand = "0.10.4"
 # 属性测试
 proptest = { version = "1.12.0",features = ["attr-macro"] }
-# 属性测试派生
-proptest-derive = "0.8.0"
 # 美观的断言差异
 pretty_assertions = { version = "1.4.1", features = ["unstable"] }
 
@@ -379,8 +375,6 @@ ropey = { version = "=2.0.0-beta.1", features = [
     "metric_utf16",
 ] }
 serde_repr = "0.1.21"
-
-portable-pty = "0.9"
 
 alacritty_terminal = "0.26.0"
 toml = "1.2"

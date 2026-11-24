@@ -175,7 +175,7 @@ impl FormDemo {
 impl Render for FormDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // 视图实体克隆，供各控件回调中回写状态。
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let submit_view = view.clone();
         let reset_view = view.clone();
         let city_view = view.clone();
@@ -183,7 +183,7 @@ impl Render for FormDemo {
         let agree_view = view.clone();
         let notify_view = view.clone();
         let reading_view = view.clone();
-        let sports_view = view.clone();
+        let sports_view = view;
 
         let city_options = self.cities.clone();
         let city_selected = self.city_selected;

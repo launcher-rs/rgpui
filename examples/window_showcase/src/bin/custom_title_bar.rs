@@ -197,7 +197,7 @@ impl Render for TitleBarDemo {
                             .child(content_button(
                                 "content-inc",
                                 "+1".into(),
-                                entity.clone(),
+                                entity,
                                 increment,
                             )),
                     )

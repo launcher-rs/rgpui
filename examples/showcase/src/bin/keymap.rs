@@ -213,7 +213,6 @@ impl Render for KeymapDemo {
                             }),
                     )
                     .child({
-                        let demo = demo.clone();
                         div()
                             .id("keymap-bind-recorded")
                             .px(px(10.0))

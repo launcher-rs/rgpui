@@ -120,14 +120,14 @@ fn theme_selector(cx: &Context<ThemeExample>) -> impl IntoElement {
         .collect();
 
     Button::new("theme-list")
-        .label(current_name.clone())
+        .label(current_name)
         .icon(IconName::Palette)
         .dropdown_menu(move |menu, _, _| {
             let mut menu = menu.label("选择主题");
             for (name, mode, checked) in &items {
                 let name = name.clone();
                 let mode = *mode;
-                menu = menu.item(PopupMenuItem::new(name.clone()).checked(*checked).on_click(
+                menu = menu.item(PopupMenuItem::new(name).checked(*checked).on_click(
                     move |_, window, cx| {
                         Theme::change(mode, Some(window), cx);
                         cx.refresh_windows();

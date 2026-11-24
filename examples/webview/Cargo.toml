@@ -8,3 +8,6 @@ publish = false
 rgpui = { workspace = true, features = ["webview"] }
 rgpui-platform.workspace = true
 wry = "0.57.3"
+
+[lints]
+workspace = true

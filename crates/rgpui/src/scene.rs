@@ -164,14 +164,17 @@ impl Scene {
         }
 
         let kind = primitive.kind();
-        match self
-            .layer_stack
-            .last()
-            .copied()
-            .and_then(|layer_ix| self.layers.get_mut(layer_ix))
-        {
+        let active_layer = self.layer_stack.last().copied();
+        match active_layer.and_then(|layer_ix| self.layers.get_mut(layer_ix)) {
             Some(layer) => {
-                layer.bounds = layer.bounds.union(&clipped_bounds);
+                // 首个图元直接取自身边界。不能用 `Bounds::default()` 做并集起点：
+                // 它的原点是 (0,0)，会把每个图层都撑成从窗口左上角开始的大矩形，
+                // 导致文本行图层互相相交、绘制顺序被错误抬高（弹窗会被下层文字盖住）。
+                if layer.primitives.is_empty() {
+                    layer.bounds = clipped_bounds;
+                } else {
+                    layer.bounds = layer.bounds.union(&clipped_bounds);
+                }
                 layer.max_kind = layer.max_kind.max(kind);
                 layer.max_shared_kind = layer.max_shared_kind.min(kind.max_shared_kind());
                 let index = self.paint_operations.len();
@@ -421,6 +424,20 @@ pub fn quad_depth_scale(quad_count: usize) -> f32 {
 /// 把 quad 在 [`Scene::quads`] 中的下标映射为深度，值越大越靠近观察者。
 pub fn quad_depth(quad_id: u32, scale: f32) -> f32 {
     ((quad_id + 1) as f32 * scale).min(1.0)
+}
+
+/// 非 quad 图元插在「第 `quad_cursor` 个 quad 之前」时应使用的深度。
+///
+/// 取 `quad_cursor - 1` 与 `quad_cursor` 两个 quad 深度的中点：严格大于已经画过的
+/// 前一个 quad、严格小于还没画的第 `quad_cursor` 个 quad，所以它既不会被前面的
+/// 不透明矩形挡住，又会（正确地）被后面那个不透明矩形挡住。
+///
+/// 不能直接钉在 [`quad_depth`]`(quad_cursor)`：那是**下一个** quad 自己的深度，
+/// 两者完全相等。深度比较在相等时不会把图元判为「被遮住」，于是弹窗这类不透明
+/// 底板（在帧首的不透明通道里就已写下同一深度）反而压不住下层文字——下层文字会
+/// 浮在弹窗之上。
+pub fn quad_depth_between(quad_cursor: u32, scale: f32) -> f32 {
+    ((quad_cursor as f32 + 0.5) * scale).min(1.0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
@@ -850,15 +867,17 @@ pub struct Shadow {
     pub order: DrawOrder,
     /// 模糊半径。
     pub blur_radius: ScaledPixels,
-    /// 边界矩形。
+    /// 完整绘制边界；外阴影包含高斯扩散范围。
     pub bounds: Bounds<ScaledPixels>,
+    /// SDF 使用的阴影形状边界，不含高斯扩散范围。
+    pub shape_bounds: Bounds<ScaledPixels>,
     /// 圆角半径。
     pub corner_radii: Corners<ScaledPixels>,
     /// 内容裁剪蒙版。
     pub content_mask: ContentMask<ScaledPixels>,
     /// 颜色。
     pub color: Hsla,
-    /// 元素边界。
+    /// 元素边框盒；所有外阴影统一裁剪到此边界外侧（与 CSS box-shadow 一致）。
     pub element_bounds: Bounds<ScaledPixels>,
     /// 元素圆角半径。
     pub element_corner_radii: Corners<ScaledPixels>,
@@ -1499,6 +1518,26 @@ mod tests {
             "图层的并集边界与第一个 Quad 相交且种类安全，层内图元应共享顺序 1"
         );
         assert_eq!(scene.batches().count(), 1);
+    }
+
+    /// 图层边界必须从首个图元的真实边界开始，不能包含窗口原点。
+    ///
+    /// 回归：`Bounds::default()` 的原点是 (0,0)，拿它做并集起点会让每个图层都
+    /// 变成从左上角开始的矩形，文本行图层因此互相相交、顺序被抬高，最终盖住弹窗。
+    #[test]
+    fn test_layer_bounds_start_at_first_primitive() {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad_at(0., 0., 10., 10.));
+        scene.push_layer();
+        scene.insert_primitive(quad_at(100., 100., 10., 10.));
+        scene.pop_layer();
+        scene.finish();
+
+        assert_eq!(
+            scene.quads.iter().map(|q| q.order).collect::<Vec<_>>(),
+            vec![1, 1],
+            "与首个 Quad 不相交的图层不应因默认原点 (0,0) 而抬高顺序"
+        );
     }
 
     /// 嵌套图层在最外层关闭时统一落地；图元在图层内不再即时查询排序树。

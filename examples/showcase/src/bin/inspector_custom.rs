@@ -60,10 +60,10 @@ impl InspectorDemo {
 
 impl Render for InspectorDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let click_view = view.clone();
         let notify_view = view.clone();
-        let hobby_view = view.clone();
+        let hobby_view = view;
 
         // F12 开关走全局绑定 + 全局监听（见 run_example），不依赖视图焦点链：
         // 无焦点/面板聚焦时也能开关，所以根节点不挂 key_context/on_action。

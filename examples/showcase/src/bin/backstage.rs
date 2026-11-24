@@ -114,7 +114,6 @@ impl Render for BackstageDemo {
             BackstageTab::new("new", "新建")
                 .icon(IconName::Plus)
                 .content({
-                    let weak = weak.clone();
                     move |_window, _cx| {
                         let weak = weak.clone();
                         v_flex()

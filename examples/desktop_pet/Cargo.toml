@@ -9,3 +9,6 @@ anyhow.workspace = true
 rgpui.workspace = true
 rgpui-platform.workspace = true
 rgpui-character.workspace = true
+
+[lints]
+workspace = true
