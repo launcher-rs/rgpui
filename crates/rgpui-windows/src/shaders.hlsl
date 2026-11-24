@@ -1075,6 +1075,7 @@ struct Shadow {
     uint order;
     float blur_radius;
     Bounds bounds;
+    Bounds shape_bounds;
     Corners corner_radii;
     Bounds content_mask;
     Hsla color;
@@ -1103,17 +1104,7 @@ ShadowVertexOutput shadow_vertex(uint vertex_id: SV_VertexID, uint shadow_id: SV
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     Shadow shadow = shadows[shadow_id];
 
-    Bounds bounds;
-    if (shadow.inset != 0u) {
-        bounds = shadow.element_bounds;
-    } else {
-        // Leave room for the gaussian tail outside the shadow rect.
-        float margin = 3.0 * shadow.blur_radius;
-        bounds = shadow.bounds;
-        bounds.origin -= margin;
-        bounds.size += 2.0 * margin;
-    }
-
+    Bounds bounds = shadow.bounds;
     float4 device_position = to_device_position(unit_vertex, bounds);
     float4 clip_distance = distance_from_clip_rect(unit_vertex, bounds, shadow.content_mask);
     float4 color = hsla_to_rgba(shadow.color);
@@ -1130,14 +1121,14 @@ ShadowVertexOutput shadow_vertex(uint vertex_id: SV_VertexID, uint shadow_id: SV
 float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
     Shadow shadow = shadows[input.shadow_id];
 
-    float2 half_size = shadow.bounds.size / 2.;
-    float2 center = shadow.bounds.origin + half_size;
+    float2 half_size = shadow.shape_bounds.size / 2.;
+    float2 center = shadow.shape_bounds.origin + half_size;
     float2 point0 = input.position.xy - center;
     float corner_radius = pick_corner_radius(point0, shadow.corner_radii);
 
     float alpha;
     if (shadow.blur_radius == 0.) {
-        float distance = quad_sdf(input.position.xy, shadow.bounds, shadow.corner_radii);
+        float distance = quad_sdf(input.position.xy, shadow.shape_bounds, shadow.corner_radii);
         alpha = saturate(0.5 - distance);
     } else {
         // The signal is only non-zero in a limited range, so don't waste samples
@@ -1165,6 +1156,12 @@ float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
         float element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
                                           shadow.element_corner_radii);
         alpha *= saturate(0.5 - element_distance);
+    } else {
+        // CSS box-shadow 规则：所有外阴影统一裁剪到元素边框盒外侧，而不是各自的
+        // shape_bounds。若按每个阴影自己的边界裁剪，多层阴影会被切成多圈分离的环带。
+        float element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
+                                          shadow.element_corner_radii);
+        alpha *= saturate(0.5 + element_distance);
     }
 
     return input.color * float4(1., 1., 1., alpha);

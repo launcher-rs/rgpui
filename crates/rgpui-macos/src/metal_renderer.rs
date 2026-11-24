@@ -11,7 +11,7 @@ use image::RgbaImage;
 use rgpui::{
     AtlasTextureId, Bounds, ContentMask, DevicePixels, MonochromeSprite, PaintSurface, PaintedPath,
     PathCurve, PathPaint, PathTile, PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene,
-    Shadow, Size, Surface, Underline, point, quad_depth, quad_depth_scale, size,
+    Shadow, Size, Surface, Underline, point, quad_depth_between, quad_depth_scale, size,
 };
 
 use core_foundation::base::TCFType;
@@ -744,8 +744,9 @@ impl MetalRenderer {
         self.draw_opaque_quads(&scene.quads, viewport_size, command_encoder);
 
         // 视口深度游标（对齐上游 D2）：Quad 批视口深度保持 (0,1)，由着色器逐实例
-        // 算深度；其余批把视口 znear=zfar 钉在 quad 游标处并启用 Greater 深度态，
-        // 落在不透明矩形之后的整片元在深度测试处失败。
+        // 算深度；其余批把视口 znear=zfar 钉在「已画完的最后一个 quad」与「下一个
+        // quad」之间的中点并启用 Greater 深度态，落在不透明矩形之后的整片元在深度
+        // 测试处失败；取中点而不是下一个 quad 自身的深度，避免两者相等时漏过来。
         let depth_scale = quad_depth_scale(scene.quads.len());
         let mut quad_cursor: u32 = 0;
         for batch in scene.batches() {
@@ -753,7 +754,7 @@ impl MetalRenderer {
             let (znear, zfar) = if is_quads {
                 (0.0, 1.0)
             } else {
-                let depth = quad_depth(quad_cursor, depth_scale) as f64;
+                let depth = quad_depth_between(quad_cursor, depth_scale) as f64;
                 (depth, depth)
             };
             command_encoder.set_viewport(metal::MTLViewport {

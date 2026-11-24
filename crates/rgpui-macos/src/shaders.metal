@@ -111,6 +111,7 @@ struct Shadow {
   uint order;
   float blur_radius;
   Bounds_ScaledPixels bounds;
+  Bounds_ScaledPixels shape_bounds;
   Corners_ScaledPixels corner_radii;
   ContentMask_ScaledPixels content_mask;
   Hsla color;
@@ -796,19 +797,7 @@ vertex ShadowVertexOutput shadow_vertex(
   float2 unit_vertex = unit_vertices[unit_vertex_id];
   Shadow shadow = shadows[shadow_id];
 
-  Bounds_ScaledPixels bounds;
-  if (shadow.inset != 0u) {
-    bounds = shadow.element_bounds;
-  } else {
-    // Leave room for the gaussian tail outside the shadow rect.
-    float margin = 3. * shadow.blur_radius;
-    bounds = shadow.bounds;
-    bounds.origin.x -= margin;
-    bounds.origin.y -= margin;
-    bounds.size.width += 2. * margin;
-    bounds.size.height += 2. * margin;
-  }
-
+  Bounds_ScaledPixels bounds = shadow.bounds;
   float4 device_position =
       to_device_position(unit_vertex, bounds, viewport_size);
   float4 clip_distance =
@@ -831,8 +820,8 @@ fragment float4 shadow_fragment(ShadowFragmentInput input [[stage_in]],
                                 [[buffer(ShadowInputIndex_Shadows)]]) {
   Shadow shadow = shadows[input.shadow_id];
 
-  float2 origin = float2(shadow.bounds.origin.x, shadow.bounds.origin.y);
-  float2 size = float2(shadow.bounds.size.width, shadow.bounds.size.height);
+  float2 origin = float2(shadow.shape_bounds.origin.x, shadow.shape_bounds.origin.y);
+  float2 size = float2(shadow.shape_bounds.size.width, shadow.shape_bounds.size.height);
   float2 half_size = size / 2.;
   float2 center = origin + half_size;
   float2 point = input.position.xy - center;
@@ -853,7 +842,7 @@ fragment float4 shadow_fragment(ShadowFragmentInput input [[stage_in]],
 
   float alpha;
   if (shadow.blur_radius == 0.) {
-    float distance = quad_sdf(input.position.xy, shadow.bounds, shadow.corner_radii);
+    float distance = quad_sdf(input.position.xy, shadow.shape_bounds, shadow.corner_radii);
     alpha = saturate(0.5 - distance);
   } else {
     // The signal is only non-zero in a limited range, so don't waste samples
@@ -881,6 +870,12 @@ fragment float4 shadow_fragment(ShadowFragmentInput input [[stage_in]],
     float element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
                                       shadow.element_corner_radii);
     alpha *= saturate(0.5 - element_distance);
+  } else {
+    // CSS box-shadow 规则：所有外阴影统一裁剪到元素边框盒外侧，而不是各自的
+    // shape_bounds。若按每个阴影自己的边界裁剪，多层阴影会被切成多圈分离的环带。
+    float element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
+                                      shadow.element_corner_radii);
+    alpha *= saturate(0.5 + element_distance);
   }
 
   return input.color * float4(1., 1., 1., alpha);

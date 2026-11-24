@@ -1310,6 +1310,7 @@ struct Shadow {
     order: u32,
     blur_radius: f32,
     bounds: Bounds,
+    shape_bounds: Bounds,
     corner_radii: Corners,
     content_mask: Bounds,
     color: Hsla,
@@ -1333,22 +1334,11 @@ fn vs_shadow(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) ins
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     var shadow = b_shadows[instance_id];
 
-    var geometry: Bounds;
-    if (shadow.inset != 0u) {
-        geometry = shadow.element_bounds;
-    } else {
-        // Leave room for the gaussian tail outside the shadow rect.
-        let margin = 3.0 * shadow.blur_radius;
-        geometry = shadow.bounds;
-        geometry.origin -= vec2<f32>(margin);
-        geometry.size += 2.0 * vec2<f32>(margin);
-    }
-
     var out = ShadowVarying();
-    out.position = to_device_position(unit_vertex, geometry);
+    out.position = to_device_position(unit_vertex, shadow.bounds);
     out.color = hsla_to_rgba(shadow.color);
     out.shadow_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, geometry, shadow.content_mask);
+    out.clip_distances = distance_from_clip_rect(unit_vertex, shadow.bounds, shadow.content_mask);
     return out;
 }
 
@@ -1360,15 +1350,15 @@ fn fs_shadow(input: ShadowVarying) -> @location(0) vec4<f32> {
     }
 
     let shadow = b_shadows[input.shadow_id];
-    let half_size = shadow.bounds.size / 2.0;
-    let center = shadow.bounds.origin + half_size;
+    let half_size = shadow.shape_bounds.size / 2.0;
+    let center = shadow.shape_bounds.origin + half_size;
     let center_to_point = input.position.xy - center;
 
     let corner_radius = pick_corner_radius(center_to_point, shadow.corner_radii);
 
     var alpha: f32;
     if (shadow.blur_radius == 0.0) {
-        let distance = quad_sdf(input.position.xy, shadow.bounds, shadow.corner_radii);
+        let distance = quad_sdf(input.position.xy, shadow.shape_bounds, shadow.corner_radii);
         alpha = saturate(0.5 - distance);
     } else {
         // The signal is only non-zero in a limited range, so don't waste samples
@@ -1396,6 +1386,12 @@ fn fs_shadow(input: ShadowVarying) -> @location(0) vec4<f32> {
         let element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
                                         shadow.element_corner_radii);
         alpha *= saturate(0.5 - element_distance);
+    } else {
+        // CSS box-shadow 规则：所有外阴影统一裁剪到元素边框盒外侧，而不是各自的
+        // shape_bounds。若按每个阴影自己的边界裁剪，多层阴影会被切成多圈分离的环带。
+        let element_distance = quad_sdf(input.position.xy, shadow.element_bounds,
+                                        shadow.element_corner_radii);
+        alpha *= saturate(0.5 + element_distance);
     }
 
     return blend_color(input.color, alpha);

@@ -306,7 +306,7 @@ fn main() {
         // Initialize theme manager with config
         let terminal_config =
             TerminalConfig::load_or_create().unwrap_or_else(|_| TerminalConfig::default());
-        let theme_manager = ThemeManager::new(Some(terminal_config.theme.clone()));
+        let theme_manager = ThemeManager::new(Some(terminal_config.theme));
         cx.set_global(theme_manager);
 
         let background_appearance = if ENABLE_BLUR {
@@ -1942,7 +1942,7 @@ impl AgentTermApp {
                 let mut menu = div();
                 for theme_name in available_themes {
                     let is_selected = theme_name == self.selected_theme.as_ref();
-                    let theme_name_shared: SharedString = theme_name.clone().into();
+                    let theme_name_shared: SharedString = theme_name.into();
                     menu = menu.child(
                         div()
                             .px(px(12.0))
@@ -1970,7 +1970,7 @@ impl AgentTermApp {
                                     .when(is_selected, |s| {
                                         s.font_weight(rgpui::FontWeight::SEMIBOLD)
                                     })
-                                    .child(theme_name.clone()),
+                                    .child(theme_name_shared),
                             )
                             .when(is_selected, |el| {
                                 el.child(div().text_xs().text_color(rgb(TEXT_PRIMARY)).child("✓"))
@@ -2212,7 +2212,7 @@ impl AgentTermApp {
                                                 .text_color(rgb(TEXT_PRIMARY))
                                                 .overflow_x_hidden()
                                                 .max_w(px(120.0))
-                                                .child(name.clone()),
+                                                .child(name),
                                         ),
                                 )
                                 .child(

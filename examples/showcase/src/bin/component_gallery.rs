@@ -476,13 +476,10 @@ impl Render for ComponentsDemo {
                                             })
                                         }
                                     })
-                                    .on_cancel({
-                                        let demo = demo.clone();
-                                        move |_, cx| {
-                                            demo.update(cx, |this, _| {
-                                                this.confirm_status = "已取消".to_string();
-                                            })
-                                        }
+                                    .on_cancel(move |_, cx| {
+                                        demo.update(cx, |this, _| {
+                                            this.confirm_status = "已取消".to_string();
+                                        })
                                     }),
                             )
                             .child(div().text_sm().child(self.confirm_status.clone())),

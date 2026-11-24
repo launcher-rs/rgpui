@@ -17,6 +17,9 @@ rgpui = { workspace = true, features = ["bench"] }
 # `#[rgpui::bench]` 生成的无头渲染器入口由平台的 test-support 门控提供。
 rgpui-platform = { workspace = true, features = ["test-support"] }
 
+[lints]
+workspace = true
+
 [[bench]]
 name = "text_shaping"
 harness = false

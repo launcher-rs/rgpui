@@ -20,10 +20,8 @@ runtime_shaders = []
 font-kit = ["dep:font-kit"]
 screen-capture = ["rgpui/screen-capture"]
 
-[dependencies]
-rgpui.workspace = true
-
 [target.'cfg(target_os = "macos")'.dependencies]
+rgpui.workspace = true
 accesskit.workspace = true
 accesskit_macos.workspace = true
 anyhow.workspace = true

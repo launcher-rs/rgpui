@@ -11,14 +11,9 @@ rgpui = { workspace = true, features = [
     "effects",
     "qr-code",
     "dom-backend",
-    "tree-sitter",
-    "tree-sitter-json",
-    "tree-sitter-toml",
-    "tree-sitter-javascript",
-    "tree-sitter-python",
 ] }
 rgpui-platform.workspace = true
-rgpui-markdown = { workspace = true, features = ["latex", "mermaid", "syntax-highlight"] }
+rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 

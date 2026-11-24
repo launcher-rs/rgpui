@@ -406,3 +406,6 @@ path = "src/bin/chat.rs"
 [[bin]]
 name = "icons"
 path = "src/bin/icons.rs"
+
+[lints]
+workspace = true

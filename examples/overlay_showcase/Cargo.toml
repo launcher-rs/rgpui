@@ -8,3 +8,6 @@ description = "浮层定位展示：popover 浮层与 anchor 锚点定位"
 [dependencies]
 rgpui.workspace = true
 rgpui-platform.workspace = true
+
+[lints]
+workspace = true

@@ -225,7 +225,7 @@ pub trait StyledExt: Styled + Sized {
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
+            .shadow_none()
             .rounded(cx.theme().radius)
     }
 
@@ -239,6 +239,36 @@ pub trait StyledExt: Styled + Sized {
 }
 
 impl<E: Styled> StyledExt for E {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TestAppContext;
+
+    /// 弹窗只保留一层主题边框，避免外阴影在灰底上形成第二层轮廓。
+    #[rgpui::test]
+    fn popover_style_keeps_single_border_without_shadow(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        cx.read(|cx| {
+            let mut element = div().popover_style(cx);
+            let style = element.style();
+            for width in [
+                style.border_widths.top,
+                style.border_widths.right,
+                style.border_widths.bottom,
+                style.border_widths.left,
+            ] {
+                assert_eq!(width, Some(px(1.).into()));
+            }
+            assert!(style.border_color.is_some());
+            assert!(
+                style.box_shadow.as_ref().is_some_and(Vec::is_empty),
+                "弹窗不应再叠加外阴影，实际 {:?}",
+                style.box_shadow
+            );
+        });
+    }
+}
 
 /// 创建一个 CSS 风格的对象阴影 [`BoxShadow`]。
 ///

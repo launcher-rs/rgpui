@@ -82,7 +82,7 @@ impl InspectorDemo {
 
 impl Render for InspectorDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let click_view = view.clone();
         let notify_view = view.clone();
         let hobby_view = view.clone();
@@ -226,7 +226,7 @@ impl Render for InspectorDemo {
                     )
                     // 崩溃快照 & AI 导出：库侧能力的可点击演示
                     // （滚动快照落盘在 run_example 里已开启，见下方）。
-                    .child(crash_ai_section(view.clone(), self.export_note.clone())),
+                    .child(crash_ai_section(view, self.export_note.clone())),
             )
     }
 }
@@ -251,7 +251,7 @@ fn section_title(text: impl Into<SharedString> + IntoElement) -> impl IntoElemen
 #[cfg(any(feature = "inspector", debug_assertions))]
 fn crash_ai_section(view: Entity<InspectorDemo>, note: Option<String>) -> impl IntoElement {
     let tree_view = view.clone();
-    let snapshot_view = view.clone();
+    let snapshot_view = view;
     v_flex()
         .gap(px(8.0))
         .child(section_title("崩溃快照 & AI 导出"))

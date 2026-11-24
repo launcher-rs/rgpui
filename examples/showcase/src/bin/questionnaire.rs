@@ -65,7 +65,7 @@ impl QuestionnaireDemo {
             .detach();
         }
 
-        let this = cx.entity().clone();
+        let this = cx.entity();
         cx.subscribe(&wizard, move |_, _, event, cx| {
             if let QuestionnaireEvent::Submit = event {
                 this.update(cx, |this, cx| this.commit(cx));
@@ -131,9 +131,9 @@ impl QuestionnaireDemo {
 
 impl Render for QuestionnaireDemo {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let restart_view = cx.entity().clone();
-        let notify_view = cx.entity().clone();
-        let agree_view = cx.entity().clone();
+        let restart_view = cx.entity();
+        let notify_view = cx.entity();
+        let agree_view = cx.entity();
 
         let (result_color, result_bg) = if self.result_ok {
             (rgb(0x107c10), rgb(0xe6f4ea))

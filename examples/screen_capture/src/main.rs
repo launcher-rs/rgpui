@@ -195,11 +195,7 @@ impl ScreenCaptureExample {
         let recording_dir = self.recording_dir_shared.clone();
 
         let frame_callback: Box<dyn Fn(ScreenCaptureFrame) + Send> = {
-            let preview_buf = preview_buf.clone();
-            let new_frame = new_frame.clone();
             let fps_counter = fps_counter.clone();
-            let recording_flag = recording_flag.clone();
-            let recording_dir = recording_dir.clone();
             let frame_counter = Arc::new(AtomicU64::new(0));
 
             Box::new(move |frame| {
@@ -234,7 +230,6 @@ impl ScreenCaptureExample {
         let stream_rx = source.stream(&foreground, frame_callback);
 
         let shared_count = Arc::new(AtomicU64::new(0));
-        let fps_shared = fps_counter.clone();
         let poll = cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -242,7 +237,7 @@ impl ScreenCaptureExample {
                     .await;
 
                 let count = shared_count.load(Ordering::Relaxed);
-                let fps = fps_shared.lock().unwrap().fps();
+                let fps = fps_counter.lock().unwrap().fps();
                 let ok = this.update(cx, |view, _cx| {
                     view.frame_count = count;
                     view.fps = fps;
@@ -317,7 +312,7 @@ impl ScreenCaptureExample {
             .as_secs();
         let dir = PathBuf::from(format!("recording_{}", ts));
         if std::fs::create_dir_all(&dir).is_ok() {
-            *self.recording_dir_shared.lock().unwrap() = Some(dir.clone());
+            *self.recording_dir_shared.lock().unwrap() = Some(dir);
             self.recording_flag.store(true, Ordering::Relaxed);
             self.recording = true;
             self.recorded_frames = 0;

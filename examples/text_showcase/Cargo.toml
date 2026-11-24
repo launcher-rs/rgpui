@@ -8,3 +8,6 @@ description = "文本展示：字体排印上下文、文本对齐与装饰、�
 [dependencies]
 rgpui.workspace = true
 rgpui-platform.workspace = true
+
+[lints]
+workspace = true

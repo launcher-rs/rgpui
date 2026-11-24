@@ -12,3 +12,6 @@ anyhow.workspace = true
 env_logger.workspace = true
 futures.workspace = true
 log.workspace = true
+
+[lints]
+workspace = true
