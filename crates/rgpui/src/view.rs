@@ -434,6 +434,11 @@ impl<V: View> Element for ViewElement<V> {
                             window.is_inspector_open() || window.inspector_tree_suspended;
                         #[cfg(not(any(feature = "inspector", debug_assertions)))]
                         let inspector_reuse_disabled = false;
+                        // DOM 树在 prepaint 阶段收集；复用会整棵跳过该阶段，使后端误删保留子树。
+                        #[cfg(feature = "dom-backend")]
+                        let dom_reuse_disabled = window.dom_builder_active();
+                        #[cfg(not(feature = "dom-backend"))]
+                        let dom_reuse_disabled = false;
 
                         // Retained P2a：干净视图复用上帧输出，
                         // 无论本帧是否渲染（非缓存视图照常渲染，仅输出被丢弃）。
@@ -451,6 +456,7 @@ impl<V: View> Element for ViewElement<V> {
                             // activation 回归）；代际变化即重建。
                             && state.focus_generation == window.focus_generation
                             && !inspector_reuse_disabled
+                            && !dom_reuse_disabled
                             // 总开关关闭即全量重建（oracle 对照基线；默认跟随环境变量）。
                             && window.retention_enabled()
                             // 无障碍激活时禁用复用（焦点／树 bookkeeping 在绘制期，跳过即过期）。
@@ -697,5 +703,33 @@ mod tests {
         let second = draw(&mut test_app);
         // 静态帧必有复用（窗口创建时可能已绘制过首帧，故不断言绝对值，只看增量）。
         assert!(second.views_reused > first.views_reused);
+    }
+
+    /// DOM 后端每帧需要完整 prepaint 树，局部重绘时不得复用并漏掉保留子树。
+    #[cfg(feature = "dom-backend")]
+    #[test]
+    fn dom_backend_disables_view_reuse() {
+        let mut test_app = TestAppContext::single();
+        let window = test_app.add_window(|_, _| StaticProbe);
+        let any_window = window.into();
+        test_app
+            .update_window(any_window, |_, window, _| {
+                window.dom_builder = Some(crate::DomTreeBuilder::new());
+            })
+            .unwrap();
+
+        let draw = |test_app: &mut TestAppContext| {
+            test_app
+                .update_window(any_window, |_, window, cx| {
+                    window.draw(cx).clear(cx);
+                    window.fast_stats.snapshot()
+                })
+                .unwrap()
+        };
+
+        let first = draw(&mut test_app);
+        let second = draw(&mut test_app);
+        assert_eq!(second.views_reused, first.views_reused);
+        assert!(second.views_rebuilt > first.views_rebuilt);
     }
 }
