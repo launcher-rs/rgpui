@@ -3209,12 +3209,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
-
-[[package]]
-name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
@@ -6440,7 +6434,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -6593,7 +6587,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-3d"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "bytemuck",
  "gltf",
@@ -6613,14 +6607,14 @@ dependencies = [
 
 [[package]]
 name = "rgpui-character"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "rgpui-dom"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "js-sys",
  "rgpui",
@@ -6656,7 +6650,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-linux"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -6703,7 +6697,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macos"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -6748,7 +6742,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-macros"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6758,7 +6752,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-markdown"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "mermaid-renderer",
  "pollster 1.0.3",
@@ -6773,7 +6767,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-platform"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "console_error_panic_hook",
  "rgpui",
@@ -6785,7 +6779,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-term"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -6813,7 +6807,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-web"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "anyhow",
  "futures",
@@ -6835,7 +6829,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-wgpu"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6866,7 +6860,7 @@ dependencies = [
 
 [[package]]
 name = "rgpui-windows"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -6894,16 +6888,34 @@ dependencies = [
 
 [[package]]
 name = "rgpui-xim"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89ba26b9de4a2610073ff01854e8dd34c2f18e3c87040ac4acf6def21322849"
+checksum = "9521163c4ba609230b25d5157e1c331cd85e0ef6fc6af8bbdd213c8f2048ffe7"
 dependencies = [
  "ahash",
- "hashbrown 0.14.5",
+ "hashbrown 0.17.1",
  "log",
+ "rgpui-xim-ctext",
+ "rgpui-xim-parser",
  "x11rb 0.14.0",
- "xim-ctext",
- "xim-parser",
+]
+
+[[package]]
+name = "rgpui-xim-ctext"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb87498234fc204907ef91d8d096a48e3e84c41c7990cb433ac3103d0168f52e"
+dependencies = [
+ "encoding_rs",
+]
+
+[[package]]
+name = "rgpui-xim-parser"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8baa0d46a45b9653a29eb7c147d9a06217ea52bf1025ad009df9e4e29542cbb"
+dependencies = [
+ "bitflags 2.13.2",
 ]
 
 [[package]]
@@ -10491,24 +10503,6 @@ name = "xcursor"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
-
-[[package]]
-name = "xim-ctext"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ac61a7062c40f3c37b6e82eeeef835d5cc7824b632a72784a89b3963c33284c"
-dependencies = [
- "encoding_rs",
-]
-
-[[package]]
-name = "xim-parser"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dcee45f89572d5a65180af3a84e7ddb24f5ea690a6d3aa9de231281544dd7b7"
-dependencies = [
- "bitflags 2.13.2",
-]
 
 [[package]]
 name = "xkbcommon"
