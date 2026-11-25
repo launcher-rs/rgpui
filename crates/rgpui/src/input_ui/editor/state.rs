@@ -352,10 +352,15 @@ impl EditorState {
     }
 
     /// 设置编辑器字号（覆盖窗口默认，仅影响本编辑器）。
-    pub fn set_font_size(&mut self, font_size: Option<Pixels>, cx: &mut Context<Self>) {
+    pub fn set_font_size(
+        &mut self,
+        window: &mut Window,
+        font_size: Option<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         self.font_size = font_size;
         self.input.update(cx, |state, cx| {
-            state.set_font_size_override(font_size, cx);
+            state.set_font_size_override(window, font_size, cx);
         });
     }
 

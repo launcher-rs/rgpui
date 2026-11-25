@@ -42,6 +42,22 @@ fn invariant<T>(value: Option<T>, message: &str) -> T {
     }
 }
 
+/// 计算输入框实际使用的行高：外部覆盖优先，否则沿用原先的按字号推导并取整逻辑。
+fn effective_line_height(state: &InputState, window: &Window) -> Pixels {
+    if let Some(line_height) = state.line_height_override {
+        return line_height;
+    }
+    let text_style = window.text_style();
+    if let Some(font_size) = state.font_size_override {
+        text_style
+            .line_height
+            .to_pixels(crate::AbsoluteLength::Pixels(font_size), window.rem_size())
+            .round()
+    } else {
+        window.line_height()
+    }
+}
+
 /// 将文本装饰范围限制在可见范围内并合并样式。
 fn compose_decorations(
     mut styles: Vec<(Range<usize>, HighlightStyle)>,
@@ -1312,9 +1328,7 @@ impl Element for TextElement {
                             .text_system()
                             .shape_line(display.clone(), text_size, &[run], None)
                             .width;
-                        let line_height = text_style
-                            .line_height
-                            .to_pixels(crate::AbsoluteLength::Pixels(text_size), rem_size);
+                        let line_height = effective_line_height(state, window);
                         Some(Bounds {
                             origin: point(bounds.origin.x + caret_x, bounds.origin.y),
                             size: size(CURSOR_WIDTH, line_height),
@@ -1348,11 +1362,7 @@ impl Element for TextElement {
         container_style.font_family = Some(text_style.font_family.clone());
         container_style.font_weight = Some(text_style.font_weight);
         container_style.font_style = Some(text_style.font_style);
-        container_style.line_height = Some(
-            text_style
-                .line_height
-                .to_pixels(text_style.font_size, rem_size),
-        );
+        container_style.line_height = Some(effective_line_height(state, window));
         container_style.white_space = Some(text_style.white_space);
 
         // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
@@ -1363,11 +1373,7 @@ impl Element for TextElement {
         text_style2.font_family = Some(text_style.font_family.clone());
         text_style2.font_weight = Some(text_style.font_weight);
         text_style2.font_style = Some(text_style.font_style);
-        text_style2.line_height = Some(
-            text_style
-                .line_height
-                .to_pixels(text_style.font_size, rem_size),
-        );
+        text_style2.line_height = Some(effective_line_height(state, window));
         text_style2.white_space = Some(text_style.white_space);
 
         let mut children = vec![DomNode {
@@ -1411,31 +1417,25 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let state = self.state.read(cx);
-        let text_style = window.text_style();
-        let font_size_override = state.font_size_override;
-        let text_size =
-            font_size_override.unwrap_or(text_style.font_size.to_pixels(window.rem_size()));
-        let line_height = if font_size_override.is_some() {
-            text_style
-                .line_height
-                .to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size())
-                .round()
-        } else {
-            window.line_height()
-        };
+        let line_height = effective_line_height(state, window);
 
         let mut style = Style::default();
         style.size.width = relative(1.).into();
         if state.mode.is_multi_line() {
             style.flex_grow = 1.0;
             style.size.height = relative(1.).into();
-            if state.mode.is_auto_grow() {
-                // 自动增长，使高度匹配行数但不超出最大行数。
-                let rows = state.mode.max_rows().min(state.mode.rows());
-                style.min_size.height = (rows * line_height).into();
-            } else {
-                style.min_size.height = line_height.into();
-            }
+            // 外部排版器给定行数时直接采用，避免 auto-grow 缓存造成首帧高度跳变。
+            let rows = state
+                .row_count_override
+                .unwrap_or_else(|| {
+                    if state.mode.is_auto_grow() {
+                        state.mode.max_rows().min(state.mode.rows())
+                    } else {
+                        1
+                    }
+                })
+                .max(1);
+            style.min_size.height = (rows * line_height).into();
         } else {
             // 单行输入的最小高度应为行高。
             style.size.height = line_height.into();
@@ -1461,6 +1461,13 @@ impl Element for TextElement {
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);
             state.display_map.ensure_text_prepared(&state.core.text, cx);
+            // 字号变化会重算折行，但 auto-grow 的行数是缓存值。若不同步，切换段落后的
+            // 首帧仍按旧行数布局，下一帧才跳到正确高度，表现为点击时行边界抖动。
+            let rows_before = state.mode.rows();
+            state.mode.update_auto_grow(&state.display_map);
+            if state.mode.rows() != rows_before {
+                cx.notify();
+            }
         });
 
         let state = self.state.read(cx);
@@ -1501,7 +1508,7 @@ impl Element for TextElement {
 
         let mut bounds = bounds;
         let wrap_width = if multi_line && state.soft_wrap {
-            Some(bounds.size.width - line_number_width - RIGHT_MARGIN)
+            Some(bounds.size.width - line_number_width - state.wrap_width_inset)
         } else {
             None
         };
@@ -1523,18 +1530,17 @@ impl Element for TextElement {
             self.state.update(cx, |state, cx| {
                 state.display_map.on_layout_changed(wrap_width, cx);
                 state.display_map.set_wrapping_indent(wrapping_indent, cx);
+                // 折行变化同样会改变 auto-grow 的目标行数，立即同步，避免下一帧跳高。
+                let rows_before = state.mode.rows();
+                state.mode.update_auto_grow(&state.display_map);
+                if state.mode.rows() != rows_before {
+                    cx.notify();
+                }
             });
         }
 
         let state = self.state.read(cx);
-        let line_height = if font_size_override.is_some() {
-            text_style
-                .line_height
-                .to_pixels(crate::AbsoluteLength::Pixels(text_size), window.rem_size())
-                .round()
-        } else {
-            window.line_height()
-        };
+        let line_height = effective_line_height(state, window);
 
         let (visible_range, visible_buffer_lines, visible_top) =
             self.calculate_visible_range(&state, line_height, bounds.size.height);

@@ -441,6 +441,14 @@ pub struct InputState {
     pub(crate) read_only: bool,
     /// 字号覆盖：Editor 组件通过此字段透传缩放字号，TextElement 使用时优先于 window.text_style()。
     pub(crate) font_size_override: Option<crate::Pixels>,
+    /// 行高覆盖：富文本编辑器把外部段落行高透传给 Input，避免内部按字号推导并取整后
+    /// 与外部静态文本的行高不一致（点击切换编辑态时段落边界会跳动）。
+    pub(crate) line_height_override: Option<crate::Pixels>,
+    /// 折行宽度右侧预留：默认沿用原先的 `RIGHT_MARGIN`（10px）。外部排版器若已
+    /// 计算好完全相同的折行宽度，可设为 0，使 Input 与外部文本在相同宽度处折行。
+    pub(crate) wrap_width_inset: crate::Pixels,
+    /// 外部排版器给定的行数覆盖（`Some` 时 request_layout 直接使用，绕过 auto-grow 的帧延迟）。
+    pub(crate) row_count_override: Option<usize>,
     /// 括号自动闭合：`None` 为自动（多行开、单行关），`Some` 显式覆盖
     ///（`editor` feature 门控）。
     #[cfg(feature = "editor")]
@@ -586,6 +594,9 @@ impl InputState {
             context_menu_override: None,
             read_only: false,
             font_size_override: None,
+            line_height_override: None,
+            wrap_width_inset: super::element::RIGHT_MARGIN,
+            row_count_override: None,
             #[cfg(feature = "editor")]
             auto_close_pairs: None,
             #[cfg(feature = "editor")]
@@ -818,10 +829,48 @@ impl InputState {
     /// 覆盖文本渲染字号（`None` 恢复窗口默认；Editor 缩放透传用）。
     pub fn set_font_size_override(
         &mut self,
+        window: &mut Window,
         font_size: Option<crate::Pixels>,
         cx: &mut Context<Self>,
     ) {
         self.font_size_override = font_size;
+        // 立即用新字号重算折行和 auto-grow 行数。若等到 prepaint 才同步，
+        // request_layout 会先用旧行数布局一帧，切换段落时出现可见的高度跳变。
+        let text_style = window.text_style();
+        let font = text_style.font();
+        let text_size = font_size.unwrap_or(text_style.font_size.to_pixels(window.rem_size()));
+        self.display_map.set_font(font, text_size, cx);
+        let _ = self.display_map.ensure_text_prepared(&self.core.text, cx);
+        self.mode.update_auto_grow(&self.display_map);
+        cx.notify();
+    }
+
+    /// 覆盖文本渲染行高（`None` 恢复按字号推导；富文本编辑器透传段落行高用）。
+    ///
+    /// 默认行高由 `text_style.line_height` 结合字号推导并取整，可能与外部
+    /// `StyledText` 的段落行高不同。设置后 `request_layout` 与绘制都直接使用该值，
+    /// 使输入态和非输入态的段落高度一致。
+    pub fn set_line_height_override(
+        &mut self,
+        line_height: Option<crate::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.line_height_override = line_height;
+        cx.notify();
+    }
+
+    /// 设置折行宽度的右侧预留（默认 10px）。
+    ///
+    /// 外部排版器已按相同宽度折行时设为 0，可避免 Input 因额外预留而提前折行。
+    pub fn set_wrap_width_inset(&mut self, inset: crate::Pixels, cx: &mut Context<Self>) {
+        self.wrap_width_inset = inset.max(crate::px(0.));
+        cx.notify();
+    }
+
+    /// 覆盖 auto-grow 的行数：外部排版器已算好行数时直接传入，避免等待
+    /// display_map 的折行结果导致首帧高度不正确。`None` 恢复 auto-grow。
+    pub fn set_row_count_override(&mut self, rows: Option<usize>, cx: &mut Context<Self>) {
+        self.row_count_override = rows;
         cx.notify();
     }
 
@@ -3484,6 +3533,56 @@ mod gesture_tests {
         // selecting 复位；选区保留（拖选已完成的选区不受影响）。
         state.read_with(cx, |state, _| {
             assert!(!state.selecting, "selecting 应复位");
+        });
+    }
+}
+
+#[cfg(test)]
+mod external_layout_tests {
+    use super::*;
+    use crate::Entity;
+
+    struct Probe {
+        _state: Entity<InputState>,
+    }
+
+    impl crate::Render for Probe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> impl crate::IntoElement {
+            crate::div()
+        }
+    }
+
+    #[rgpui::test]
+    fn line_height_and_wrap_inset_overrides(cx: &mut crate::TestAppContext) {
+        cx.update(crate::input_ui::init);
+        cx.update(crate::theme::init);
+        let _ = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
+            state.update(cx, |state, cx| {
+                assert_eq!(state.line_height_override, None);
+                assert_eq!(state.wrap_width_inset, super::super::element::RIGHT_MARGIN);
+                assert_eq!(state.row_count_override, None);
+
+                state.set_line_height_override(Some(crate::px(22.)), cx);
+                state.set_row_count_override(Some(3), cx);
+                state.set_wrap_width_inset(crate::px(0.), cx);
+                assert_eq!(state.line_height_override, Some(crate::px(22.)));
+                assert_eq!(state.wrap_width_inset, crate::px(0.));
+                assert_eq!(state.row_count_override, Some(3));
+
+                state.set_wrap_width_inset(crate::px(-4.), cx);
+                assert_eq!(state.wrap_width_inset, crate::px(0.));
+
+                state.set_line_height_override(None, cx);
+                state.set_row_count_override(None, cx);
+                assert_eq!(state.line_height_override, None);
+                assert_eq!(state.row_count_override, None);
+            });
+            Probe { _state: state }
         });
     }
 }

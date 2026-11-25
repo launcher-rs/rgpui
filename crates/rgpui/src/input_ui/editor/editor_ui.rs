@@ -406,7 +406,7 @@ fn crumb_elements(
 }
 
 impl RenderOnce for Editor {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         // 状态行：Ln 行， Col 列（字节列，CJK 以字节计，演示够用）。
         let (input, stack, sticky_position) = self.editor.read_with(cx, |state, cx| {
             let stack = if state.sticky_scroll_enabled() {
@@ -419,7 +419,7 @@ impl RenderOnce for Editor {
         // 编辑器字号覆盖：builder 设置优先，否则清除。
         let effective_font_size = self.font_size;
         input.update(cx, |state, cx| {
-            state.set_font_size_override(effective_font_size, cx);
+            state.set_font_size_override(window, effective_font_size, cx);
         });
         // 粘性顶栏：面包屑（点击跳转符号头；`Status` 位置时顶栏永不出现，
         // 面包屑改由状态行渲染，空栈非空栈高度一致，编辑区不跳动）。
