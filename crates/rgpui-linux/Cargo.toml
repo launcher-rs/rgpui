@@ -133,5 +133,5 @@ x11rb = { version = "0.14.0", features = [
 xim = { features = [
     "x11rb-xcb",
     "x11rb-client",
-], package = "rgpui-xim", version = "0.4.1", optional = true }
+], package = "rgpui-xim", version = "0.5.0", optional = true }
 x11-clipboard = { version = "0.9.3", optional = true }
