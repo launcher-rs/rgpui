@@ -874,6 +874,22 @@ impl InputState {
         cx.notify();
     }
 
+    /// 预置折行宽度：外部排版器已知段落可用宽度时，在首次布局前先把折行和
+    /// auto-grow 行数算好。
+    ///
+    /// 富文本编辑器切换段落时，输入框要等到 `prepaint` 拿到真实 bounds 才重新
+    /// 折行；`request_layout` 在那之前会用上一段的旧行数布局一帧，表现为段落
+    /// 高度先跳一下。提前传入与真实布局一致的宽度即可消除这一帧。
+    /// 这里不改变布局来源，`prepaint` 仍以真实 bounds 为准。
+    pub fn set_wrap_width(&mut self, width: Option<crate::Pixels>, cx: &mut Context<Self>) {
+        if let Some(width) = width {
+            self.display_map.on_layout_changed(Some(width), cx);
+            let _ = self.display_map.ensure_text_prepared(&self.core.text, cx);
+            self.mode.update_auto_grow(&self.display_map);
+        }
+        cx.notify();
+    }
+
     #[cfg(feature = "editor")]
     /// 设置括号自动闭合（builder 版，创建时链式调用）。
     ///
