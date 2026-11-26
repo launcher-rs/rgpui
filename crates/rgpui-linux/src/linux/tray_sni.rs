@@ -393,17 +393,38 @@ pub(crate) async fn serve(
     let sni_emitter = SignalEmitter::new(&conn, item_path)?;
     let menu_emitter = SignalEmitter::new(&conn, menu_path)?;
 
-    // watcher 可能尚未就绪（桌面环境重启等）。不在这里轮询等待，而是借主线程后续
-    // 发来的每一次变更命令重试注册：设置图标与菜单本身就会产生数次命令。
+    // watcher 可能尚未就绪（桌面环境重启等）。原先只靠后续命令流触发重试：
+    // 如果应用设完托盘就不再发命令，就永远注册不上。现在加一个 2 秒的定时兜底，
+    // 即使没有命令也会重试，成功时补发状态信号让主机重新拉取图标和菜单。
     let mut registered = register(&conn).await.is_ok();
     if !registered {
-        log::debug!("StatusNotifierWatcher 尚未就绪，将在下次托盘更新时重试注册");
+        log::warn!("StatusNotifierWatcher 尚未就绪，将定时重试注册托盘图标");
     }
 
-    while let Some(command) = commands.next().await {
+    loop {
+        let command = futures::select! {
+            command = futures::FutureExt::fuse(commands.next()) => match command {
+                Some(command) => command,
+                None => break,
+            },
+            _ = futures::FutureExt::fuse(smol::Timer::after(std::time::Duration::from_secs(2))) => {
+                if !registered && register(&conn).await.is_ok() {
+                    registered = true;
+                    log::info!("StatusNotifierWatcher 就绪，托盘注册成功");
+                    let status = shared.lock().status.clone();
+                    let _ = sni_emitter.new_icon().await;
+                    let _ = sni_emitter.new_status(&status).await;
+                    let revision = shared.lock().menu_revision;
+                    let _ = menu_emitter.layout_updated(revision, 0).await;
+                }
+                continue;
+            }
+        };
+
         if !registered {
             if register(&conn).await.is_ok() {
                 registered = true;
+                log::info!("StatusNotifierWatcher 就绪，托盘注册成功");
                 // 延迟注册成功：主机可能在注册前已拉取过空菜单/空图标，
                 // 这里补发当前状态信号，促使主机重新读取。
                 let status = shared.lock().status.clone();

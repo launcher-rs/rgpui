@@ -20,7 +20,11 @@
 
 启用：`rgpui = { features = ["ribbon", "viewport", "spreadsheet", "document", "control-channel"] }`
 （默认全关，普通应用不必开启；`document` 已蕴含 `viewport`）。
-示例：`cargo run -p showcase --bin {command_registry,ribbon,qat,mini_toolbar,backstage,viewport,ruler,canvas_objects,formula_bar,sheet_grid,page_view,automation}`，
+示例（按 feature 合并为 gallery，用 `-- <demo>` 选具体演示）：
+`cargo run -p showcase --bin ribbon_gallery --features ribbon -- {command_registry,ribbon,qat,mini_toolbar,backstage}`、
+`cargo run -p showcase --bin viewport_gallery --features viewport -- {viewport,ruler,canvas_objects}`、
+`cargo run -p showcase --bin spreadsheet_gallery --features spreadsheet -- {formula_bar,sheet_grid}`、
+`cargo run -p showcase --bin page_view --features document`、`cargo run -p showcase --bin automation`。
 整合演示：`cargo run -p showcase --bin app_suite`。
 
 ---
@@ -299,7 +303,7 @@ for guide in &result.guides {            // 绘制参考线
   `hit_handle_rotated`（命中判定）、`resize_bounds`（按把手拖动出新矩形）、
   `rotate_point` / `angle_between`、`marquee_bounds` / `marquee_hits`（框选）、
   `union_bounds`、`align` / `distribute`（多选对齐与等分，配合 `AlignMode`）
-- 示例：`cargo run -p showcase --bin canvas_objects`
+- 示例：`cargo run -p showcase --bin viewport_gallery --features viewport -- canvas_objects`
 
 ## 6. 电子表格基座（`rgpui::formula_bar` / `rgpui::sheet_grid`，feature `spreadsheet`）
 

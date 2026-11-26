@@ -45,8 +45,8 @@ use crate::{
     Subscription, SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
     TextRenderingMode, TextStyle, TextStyleRefinement, TransformationMatrix, Underline,
     UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls,
-    WindowDecorations, WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler,
-    px, root::Root, size, transparent_black,
+    WindowDecorations, WindowKind, WindowOptions, WindowParams, WindowTextSystem, point,
+    prelude::*, profiler, px, root::Root, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
@@ -708,6 +708,17 @@ pub(crate) struct HitTest {
 }
 
 /// 对应平台窗口的窗口控制区域类型。
+///
+/// **平台限制（重要）**：这个标记目前只对 Windows 与 Web 后端生效——只有它们会读取
+/// [`PlatformWindow::on_hit_test_window_control`](crate::platform::PlatformWindow::on_hit_test_window_control)
+/// 注册的回调，把命中区映射到 `WM_NCHITTEST` / 浏览器拖动区。Linux（Wayland / X11）与
+/// macOS 后端**不读取**它，标记不会产生任何效果。
+///
+/// 在 Linux / macOS 上请显式注册鼠标事件并调用
+/// [`Window::start_window_move`](Self::start_window_move)、
+/// [`Window::zoom_window`](Self::zoom_window)、
+/// [`Window::minimize_window`](Self::minimize_window) 等；或直接复用框架自带的
+/// [`TitleBar`](crate::title_bar::TitleBar)，它已经按平台分流处理。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
     /// 允许拖动平台窗口的区域。
@@ -1131,6 +1142,24 @@ enum InputModality {
     Touch,
 }
 
+/// 合成器不提供服务端装饰时，由框架补画的默认标题栏。
+///
+/// 单独做成实体视图而非直接插入 `RenderOnce` 元素：`TitleBar` 内部用
+/// `Window::use_state` 记录拖拽状态，必须在带身份的视图上下文中渲染。
+struct SystemTitleBar;
+
+impl Render for SystemTitleBar {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = window.platform_window.get_title();
+        let mut title_bar = crate::title_bar::TitleBar::new();
+        if !title.is_empty() {
+            title_bar =
+                title_bar.child(crate::div().text_color(cx.theme().foreground).child(title));
+        }
+        title_bar
+    }
+}
+
 /// 保存特定窗口的状态。
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
@@ -1140,6 +1169,12 @@ pub struct Window {
     display_id: Option<DisplayId>,
     is_resizable: bool,
     is_minimizable: bool,
+    /// 应用期望系统标题栏、但合成器无法提供服务端装饰时，由框架补画一个默认标题栏。
+    ///
+    /// 只在 Linux 上有意义：GNOME/Mutter 不支持 `zxdg_decoration_manager_v1`，
+    /// 请求服务端装饰会回退为客户端装饰，若不补画就出现「两边都不管」的无标题栏窗口。
+    /// 显式请求 `WindowDecorations::Client` 的应用会自行绘制 `TitleBar`，不参与此回退。
+    system_title_bar: Option<Entity<SystemTitleBar>>,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
@@ -1511,6 +1546,23 @@ impl Window {
         let initial_window_title = titlebar
             .as_ref()
             .and_then(|titlebar| titlebar.title.clone());
+
+        // 判断是否需要框架补画默认标题栏：应用期望系统装饰，但平台可能无法提供。
+        // 只覆盖常规顶层窗口；弹出层、layer-shell、覆盖层与全屏窗口在其它平台
+        // 本来就没有系统标题栏，这里也不应补画。
+        //
+        // 显式请求客户端装饰意味着应用会自行渲染 `TitleBar`，不能重复补画。
+        let needs_system_title_bar = cfg!(target_os = "linux")
+            && matches!(
+                &kind,
+                WindowKind::Normal | WindowKind::Floating | WindowKind::Dialog
+            )
+            && titlebar
+                .as_ref()
+                .is_some_and(|titlebar| !titlebar.appears_transparent)
+            && !matches!(window_decorations, Some(WindowDecorations::Client))
+            && !app_owns_titlebar_drag
+            && !matches!(&window_bounds, Some(WindowBounds::Fullscreen(_)));
 
         let window_bounds = window_bounds.unwrap_or_else(|| default_bounds(display_id, cx));
         let mut platform_window = cx.platform.open_window(
@@ -1998,24 +2050,29 @@ impl Window {
                     .log_err();
             })
         });
-        platform_window.on_hit_test_window_control({
-            let mut cx = cx.to_async();
-            Box::new(move || {
-                skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
-                    for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                        // 只有该区域是最上层 hitbox 时才算窗口控制区。
-                        // 标题栏整条是 Drag 区，但其上还压着快速访问工具栏、文件入口等
-                        // 按钮；若按“包含鼠标”判定，系统会把按钮点击当成标题栏拖拽，
-                        // 这些按钮就永远收不到点击。
-                        if window.mouse_hit_test.ids.first() == Some(&hitbox.id) {
-                            return Some(*area);
+        // 只有 Windows / Web 后端会真正调用这个回调；Linux 与 macOS 后端不读取它。
+        // 在这两个平台上跳过注册，既不做无用功，也避免让调用方以为「注册成功 =
+        // 控制区已生效」——这一处静默注册正是跨平台标题栏踩坑的来源之一。
+        if cfg!(any(target_os = "windows", target_family = "wasm")) {
+            platform_window.on_hit_test_window_control({
+                let mut cx = cx.to_async();
+                Box::new(move || {
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
+                        for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
+                            // 只有该区域是最上层 hitbox 时才算窗口控制区。
+                            // 标题栏整条是 Drag 区，但其上还压着快速访问工具栏、文件入口等
+                            // 按钮；若按“包含鼠标”判定，系统会把按钮点击当成标题栏拖拽，
+                            // 这些按钮就永远收不到点击。
+                            if window.mouse_hit_test.ids.first() == Some(&hitbox.id) {
+                                return Some(*area);
+                            }
                         }
-                    }
-                    None
-                }))
-                .unwrap_or(None)
-            })
-        });
+                        None
+                    }))
+                    .unwrap_or(None)
+                })
+            });
+        }
         platform_window.on_move_tab_to_new_window({
             let mut cx = cx.to_async();
             Box::new(move || {
@@ -2098,6 +2155,8 @@ impl Window {
         #[cfg(feature = "dom-backend")]
         let supports_dom = platform_window.supports_dom();
 
+        let system_title_bar = needs_system_title_bar.then(|| cx.new(|_| SystemTitleBar));
+
         Ok(Window {
             handle,
             invalidator,
@@ -2106,6 +2165,7 @@ impl Window {
             display_id,
             is_resizable,
             is_minimizable,
+            system_title_bar,
             sprite_atlas,
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
@@ -2474,7 +2534,11 @@ impl Window {
         self.platform_window.is_maximized()
     }
 
-    /// 请求特定的窗口装饰（Wayland）
+    /// 请求使用客户端还是服务端装饰（Wayland 与 X11）。
+    ///
+    /// 请求可能被合成器/窗口管理器回退：Wayland 无 xdg-decoration 支持时服务端装饰
+    /// 会变成客户端装饰，X11 无合成器时反过来。回退会记 `warn` 日志；要确认实际
+    /// 生效值请在请求后调用 [`Self::window_decorations`]，不要假设请求一定被接受。
     pub fn request_decorations(&self, decorations: WindowDecorations) {
         self.platform_window.request_decorations(decorations);
     }
@@ -2850,6 +2914,9 @@ impl Window {
 
     pub(crate) fn appearance_changed(&mut self, cx: &mut App) {
         self.appearance = self.platform_window.appearance();
+        // 滚动条显示策略跟随系统设置（Linux 的 overlay-scrolling 等），
+        // 主题明暗变化时也顺便重读，避免只能建窗时生效
+        crate::theme::Theme::sync_scrollbar_appearance(cx);
 
         self.appearance_observers
             .clone()
@@ -2897,7 +2964,11 @@ impl Window {
         self.platform_window.zoom();
     }
 
-    /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）
+    /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）。
+    ///
+    /// **有平台前置条件**：X11 发的是 `_GTK_SHOW_WINDOW_MENU` 客户端消息，只有
+    /// GTK 系 WM（如 mutter）认，KDE / i3 等直接忽略；Wayland 需要鼠标按下取得的
+    /// serial，从定时器或键盘事件调用会被合成器丢弃。两种方式都可能「什么都没发生」。
     pub fn show_window_menu(&self, position: Point<Pixels>) {
         self.platform_window.show_window_menu(position)
     }
@@ -2925,6 +2996,8 @@ impl Window {
     /// 处理 Linux 和 macOS 的窗口移动。
     /// 告诉合成器控制窗口移动（Wayland 和 X11）
     ///
+    /// Wayland 需要鼠标按下时的 serial；从非鼠标按下上下文调用会被合成器忽略，
+    /// 所以应从 `on_mouse_down` / `on_mouse_move` 状态机里触发（框架 `TitleBar` 如此）。
     /// 在移动操作期间可能不会接收到事件。
     pub fn start_window_move(&self) {
         self.platform_window.start_window_move()
@@ -2941,7 +3014,10 @@ impl Window {
         self.client_inset
     }
 
-    /// 返回标题栏窗口控件是否需要由应用程序渲染（Wayland 和 X11）
+    /// 返回标题栏窗口控件是否需要由应用程序渲染（Wayland 和 X11）。
+    ///
+    /// 返回的是**协商后的实际值**，可能不同于 `WindowOptions::window_decorations`
+    /// 的请求值（见 [`Self::request_decorations`]）；自绘标题栏应据此决定是否绘制。
     pub fn window_decorations(&self) -> Decorations {
         self.platform_window.window_decorations()
     }
@@ -2990,6 +3066,7 @@ impl Window {
     }
 
     /// 在平台级别将窗口标记为脏。
+    /// **仅 macOS 有效**（标题栏脏标记）；Linux / Windows 为空操作。
     pub fn set_window_edited(&mut self, edited: bool) {
         self.platform_window.set_edited(edited);
     }
@@ -3009,6 +3086,7 @@ impl Window {
     }
 
     /// 显示平台字符调色板。
+    /// **仅 macOS 有效**；Linux / Windows 为空操作，需要时自行实现元素级字符面板。
     pub fn show_character_palette(&self) {
         self.platform_window.show_character_palette();
     }
@@ -3517,6 +3595,30 @@ impl Window {
         let mut root_element = invariant(self.root.as_ref(), "window must have a root view")
             .clone()
             .into_any_element();
+
+        // Linux 上请求服务端装饰可能因合成器不支持（如 GNOME/Mutter 不提供
+        // `zxdg_decoration_manager_v1`）而回退为客户端装饰。若应用本身没有渲染
+        // `TitleBar`，窗口就既没有系统框架也没有自绘标题栏，与 Windows/macOS/X11
+        // 的默认外观不一致。这里按需补画一个默认标题栏，交互（拖动、双击缩放、
+        // 最小化/最大化/关闭）与框架自带的 `TitleBar` 一致。
+        let needs_fallback = matches!(self.window_decorations(), Decorations::Client { .. });
+        if let Some(title_bar) = self.system_title_bar.as_ref().filter(|_| needs_fallback) {
+            root_element = crate::div()
+                .id("system-title-bar-frame")
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(title_bar.clone())
+                .child(
+                    crate::div()
+                        .id("system-title-bar-content")
+                        .flex_1()
+                        .min_h_0()
+                        .child(root_element),
+                )
+                .into_any_element();
+        }
+
         let root_layout_id = root_element.request_layout(self, cx);
         invariant(self.layout_engine.as_mut(), "layout engine must exist")
             .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
@@ -6331,6 +6433,9 @@ impl Window {
     }
 
     /// 请求操作系统引起对此窗口的注意。
+    ///
+    /// 目前只有 X11 真正实现；Wayland / Windows / macOS 是空操作。需要跨端
+    /// 提示用户时请改用 `App::show_notification`。
     pub fn request_attention(&self) {
         self.platform_window.request_attention();
     }
@@ -6351,6 +6456,9 @@ impl Window {
     }
 
     /// 在屏幕坐标中设置窗口位置。
+    ///
+    /// X11 / Windows 会真正移动；Wayland 是「尽力而为」，合成器可忽略；macOS
+    /// 当前为空操作。需要精确定位时请检查平台是否支持。
     pub fn set_position(&mut self, position: Point<Pixels>) {
         self.platform_window.set_position(position);
     }
@@ -6631,7 +6739,8 @@ impl Window {
     }
 
     /// 读取支持此窗口的 GPU 的信息。
-    /// 目前在 Mac 和 Windows 上返回 None。
+    /// Windows 与三个 Linux 后端已实现，macOS 当前返回 `None`；
+    /// 未实现时返回 `None`，调用方不应把它等同于「没有 GPU」。
     pub fn gpu_specs(&self) -> Option<GpuSpecs> {
         self.platform_window.gpu_specs()
     }

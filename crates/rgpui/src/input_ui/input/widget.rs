@@ -177,7 +177,11 @@ impl Input {
         self
     }
 
-    /// 设置密码管理器和自动填充的语义内容类型。
+    /// 设置输入框的语义内容类型。
+    ///
+    /// 无障碍语义（Role）跨平台生效；「密码管理器 / 自动填充」的原生提示
+    /// 目前只有 macOS 实现（`PlatformWindow::set_text_content_type`），
+    /// Windows / Linux / Web 为空操作。。
     ///
     /// 这是组件级别的语义提示。对于 `Password` / `NewPassword`，
     /// 输入框会默认启用掩码（显示 `*`），除非通过

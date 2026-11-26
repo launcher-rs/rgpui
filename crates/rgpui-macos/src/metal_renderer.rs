@@ -139,6 +139,17 @@ pub(crate) struct MetalRenderer {
 }
 
 impl MetalRenderer {
+    /// 当前 Metal 设备信息，供 `Window::gpu_specs()` 使用。
+    /// Metal 没有软件模拟器，driver 字段用固定标识（无 wgpu 那样的驱动字符串）。
+    pub fn gpu_specs(&self) -> rgpui::GpuSpecs {
+        rgpui::GpuSpecs {
+            is_software_emulated: false,
+            device_name: self.device.name().to_owned(),
+            driver_name: "Metal".to_owned(),
+            driver_info: String::new(),
+        }
+    }
+
     /// 创建带有 CAMetalLayer 的新 Metal 渲染器，用于窗口渲染。
     ///
     /// # 参数

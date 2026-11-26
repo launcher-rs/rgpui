@@ -56,7 +56,7 @@ bins = [
 
 [components."电子表格网格"]
 modules = ["crates/rgpui/src/sheet_grid.rs"]
-bins = ["showcase:sheet_grid"]
+bins = ["showcase:spreadsheet_gallery"]
 
 [components."标题栏/扩展"]
 modules = ["crates/rgpui/src/title_bar", "crates/rgpui/src/components"]
@@ -64,7 +64,7 @@ bins = [
     "showcase:component_gallery",
     "showcase:extended_components",
     "showcase:sidebar",
-    "showcase:dock",
+    "showcase:layout_gallery",
 ]
 
 [components."动画/手势/物理"]
@@ -73,7 +73,7 @@ bins = ["showcase:animation"]
 
 [components."对话"]
 modules = ["crates/rgpui/src/chat"]
-bins = ["showcase:chat"]
+bins = ["showcase:layout_gallery"]
 
 [components."剪贴板"]
 modules = ["crates/rgpui/src/platform.rs"]
@@ -142,16 +142,16 @@ modules = [
 ]
 bins = [
     "showcase:app_suite",
-    "showcase:command_registry",
+    "showcase:ribbon_gallery",
     "showcase:automation",
-    "showcase:ribbon",
-    "showcase:qat",
-    "showcase:mini_toolbar",
-    "showcase:backstage",
-    "showcase:viewport",
-    "showcase:ruler",
-    "showcase:canvas_objects",
-    "showcase:formula_bar",
+    "showcase:ribbon_gallery",
+    "showcase:ribbon_gallery",
+    "showcase:ribbon_gallery",
+    "showcase:ribbon_gallery",
+    "showcase:viewport_gallery",
+    "showcase:viewport_gallery",
+    "showcase:viewport_gallery",
+    "showcase:spreadsheet_gallery",
     "showcase:page_view",
 ]
 

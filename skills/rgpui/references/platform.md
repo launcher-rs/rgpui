@@ -45,7 +45,7 @@ Web 端先调 `rgpui_platform::web_init()`（`#![cfg_attr(target_family = "wasm"
 | 菜单 | `set_menus`(:408)、`get_menus`(:410)、`set_dock_menu`(:415)、`perform_dock_menu_action`(:417)、`add_recent_document`(:419)、`update_jump_list`(:421)、`on_app_menu_action`(:429)、`on_will_open_app_menu`(:431)、`on_validate_app_menu_command`(:433) |
 | 电源/热 | `thermal_state`(:436)、`on_thermal_state_change`(:438)、`on_system_power_event`(:555)、`on_system_wake`(:558)、`start_power_save_blocker`(:567)、`system_idle_time`(:575) |
 | 系统信息 | `os_info`(:585)、`focused_window_info`(:537)、`network_status`(:580)、`compositor_name`(:441)、`app_path`(:445) |
-| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:462/:464)、`read_from_primary`/`write_to_primary`(:468/:471)、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:475/:478)；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
+| 剪贴板 | `read_from_clipboard`/`write_to_clipboard`(:462/:464)（全平台）、`read_from_primary`/`write_to_primary`(:468/:471)（**仅 Linux/FreeBSD**）、`read_from_find_pasteboard`/`write_to_find_pasteboard`(:475/:478)（**仅 macOS**，Linux 上调用会编译失败）；富负载用 `ClipboardEntry::Format(ClipboardFormat)`（`new_html`/`new_rtf`/`new_with_format`，MIME 常量 `ClipboardFormat::HTML` 等，读取 `text`/`html`/`rtf`/`format`/`formats`） |
 | 凭据 | `write_credentials`/`read_credentials`/`delete_credentials`(:481/:483/:485) |
 | 键盘 | `keyboard_layout`(:488)、`keyboard_mapper`(:490)、`on_keyboard_layout_change`(:492) |
 | 托盘 | `set_tray`(:495)、`set_tray_icon`(:497)、`set_tray_menu`(:499)、`set_tray_tooltip`(:501)、`set_tray_panel_mode`(:503)、`get_tray_icon_bounds`(:505)、`on_tray_icon_event`(:509)、`on_tray_menu_action`(:511) |
@@ -185,7 +185,10 @@ application().run(move |cx| {
 ## 平台能力实现矩阵
 
 这些能力在 `Platform` 上有默认实现（返回空值/`None`），各后端必须真正实现，
-否则应用层拿到的是「看似成功」的空结果。1.6 审查后的实际实现：
+否则应用层拿到的是「看似成功」的空结果。下表只列**已逐平台核对**的 8 项，
+「未列出」不代表已对齐——其余 API（窗口控制区、`prompt`、托盘边界/面板模式、
+`request_attention`、热状态等）请查 `docs/linux-api-parity-audit.md` 的第二、
+第五节。1.6 审查后的实际实现：
 
 | 能力 | Windows（`rgpui-windows`） | macOS（`rgpui-macos`） | Linux（`rgpui-linux`） |
 |------|---------------------------|------------------------|------------------------|

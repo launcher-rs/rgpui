@@ -44,19 +44,25 @@ pub(crate) fn system_idle_time() -> Option<Duration> {
 /// `getifaddrs` 只能回答「有没有启用中的非回环接口拿到地址」，没有强制门户
 /// 之类的探测能力，因此只映射 `Connected` / `Disconnected`。
 pub(crate) fn network_status() -> NetworkStatus {
-    if any_interface_up() {
-        NetworkStatus::Connected
-    } else {
-        NetworkStatus::Disconnected
+    match any_interface_up() {
+        Some(true) => NetworkStatus::Connected,
+        Some(false) => NetworkStatus::Disconnected,
+        // getifaddrs 失败是「探测不到」，不是「断网」；用 ConnectedBelowRequired
+        // 表达状态未知/降级，让调用方别把 API 故障当成用户网络故障
+        None => {
+            log::warn!("getifaddrs 失败，网络状态未知");
+            NetworkStatus::ConnectedBelowRequired
+        }
     }
 }
 
 /// 是否存在已启用、非回环、带 IPv4/IPv6 地址的网络接口。
-fn any_interface_up() -> bool {
+/// 返回 None 表示探测本身失败（与「没有活动接口」区分）。
+fn any_interface_up() -> Option<bool> {
     unsafe {
         let mut interfaces: *mut libc::ifaddrs = std::ptr::null_mut();
         if libc::getifaddrs(&mut interfaces) != 0 {
-            return false;
+            return None;
         }
 
         let mut up = false;
@@ -76,6 +82,6 @@ fn any_interface_up() -> bool {
         }
 
         libc::freeifaddrs(interfaces);
-        up
+        Some(up)
     }
 }

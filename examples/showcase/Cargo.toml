@@ -77,142 +77,117 @@ inspector = ["rgpui/inspector"]
 [[bin]]
 name = "hello_world"
 path = "src/bin/hello_world.rs"
+test = false
 
 [[bin]]
 name = "a11y"
 path = "src/bin/a11y.rs"
+test = false
 
 [[bin]]
 name = "active_state_bug"
 path = "src/bin/active_state_bug.rs"
+test = false
 
 [[bin]]
 name = "animation"
 path = "src/bin/animation.rs"
+test = false
 
 [[bin]]
 name = "daemon_app"
 path = "src/bin/daemon_app.rs"
+test = false
 
 [[bin]]
 name = "theme"
 path = "src/bin/theme.rs"
+test = false
 
 # ---------- 组件 ----------
 [[bin]]
 name = "form"
 path = "src/bin/form.rs"
+test = false
 
 [[bin]]
 name = "questionnaire"
 path = "src/bin/questionnaire.rs"
+test = false
 
 [[bin]]
 name = "diff"
 path = "src/bin/diff.rs"
+test = false
 required-features = ["diff"]
 
 [[bin]]
 name = "input"
 path = "src/bin/input.rs"
+test = false
 
 [[bin]]
 name = "extended_components"
 path = "src/bin/extended_components.rs"
+test = false
 
 [[bin]]
 name = "dialog"
 path = "src/bin/dialog.rs"
+test = false
 
 [[bin]]
 name = "sidebar"
 path = "src/bin/sidebar.rs"
+test = false
 
 [[bin]]
 name = "scrollable"
 path = "src/bin/scrollable.rs"
+test = false
 
-[[bin]]
-name = "grid_layout"
-path = "src/bin/grid_layout.rs"
 
-[[bin]]
-name = "gradient"
-path = "src/bin/gradient.rs"
 
-[[bin]]
-name = "pattern"
-path = "src/bin/pattern.rs"
 
-[[bin]]
-name = "painting"
-path = "src/bin/painting.rs"
 
 [[bin]]
 name = "charts"
 path = "src/bin/charts.rs"
+test = false
 required-features = ["charts"]
 
 [[bin]]
 name = "effects"
 path = "src/bin/effects.rs"
+test = false
 required-features = ["effects"]
 
 [[bin]]
 name = "qr_code"
 path = "src/bin/qr_code.rs"
+test = false
 required-features = ["qr-code"]
 
-# ---------- 交互与事件 ----------
-[[bin]]
-name = "drag_drop"
-path = "src/bin/drag_drop.rs"
 
-[[bin]]
-name = "focus_visible"
-path = "src/bin/focus_visible.rs"
 
-[[bin]]
-name = "tab_stop"
-path = "src/bin/tab_stop.rs"
 
-[[bin]]
-name = "mouse_pressure"
-path = "src/bin/mouse_pressure.rs"
 
-[[bin]]
-name = "move_entity_between_windows"
-path = "src/bin/move_entity_between_windows.rs"
 
-[[bin]]
-name = "on_window_close_quit"
-path = "src/bin/on_window_close_quit.rs"
 
-[[bin]]
-name = "ownership_post"
-path = "src/bin/ownership_post.rs"
 
-[[bin]]
-name = "set_menus"
-path = "src/bin/set_menus.rs"
-
-[[bin]]
-name = "native_notification"
-path = "src/bin/native_notification.rs"
 
 [[bin]]
 name = "native_menu"
 path = "src/bin/native_menu.rs"
+test = false
 
 # ---------- 性能与调试 ----------
 [[bin]]
 name = "input_latency"
 path = "src/bin/input_latency.rs"
+test = false
 required-features = ["input-latency"]
 
-[[bin]]
-name = "paths_bench"
-path = "src/bin/paths_bench.rs"
 
 [[bin]]
 name = "inspector"
@@ -221,6 +196,7 @@ path = "src/bin/inspector.rs"
 [[bin]]
 name = "inspector_custom"
 path = "src/bin/inspector_custom.rs"
+test = false
 
 # ---------- 测试基建 ----------
 [[bin]]
@@ -231,105 +207,112 @@ path = "src/bin/testing.rs"
 [[bin]]
 name = "i18n"
 path = "src/bin/i18n.rs"
+test = false
 
 # ---------- 富文本 / 结构化展示 ----------
 [[bin]]
 name = "markdown"
 path = "src/bin/markdown.rs"
+test = false
 
 [[bin]]
 name = "markdown_stream"
 path = "src/bin/markdown_stream.rs"
+test = false
 
 [[bin]]
 name = "markdown_selection"
 path = "src/bin/markdown_selection.rs"
+test = false
 
 [[bin]]
 name = "tabs"
 path = "src/bin/tabs.rs"
+test = false
 
-[[bin]]
-name = "tree"
-path = "src/bin/tree.rs"
 
-[[bin]]
-name = "status_bar"
-path = "src/bin/status_bar.rs"
 
 [[bin]]
 name = "fps_hud"
 path = "src/bin/fps_hud.rs"
+test = false
 
 [[bin]]
 name = "component_gallery"
 path = "src/bin/component_gallery.rs"
+test = false
 
 # ---------- 编辑器 / 工作区 ----------
 [[bin]]
 name = "editor"
 path = "src/bin/editor.rs"
+test = false
 required-features = ["editor"]
 
 [[bin]]
 name = "keymap"
 path = "src/bin/keymap.rs"
+test = false
 
 # ---------- 富剪贴板（核心 API，无需 feature） ----------
 [[bin]]
 name = "rich_clipboard"
 path = "src/bin/rich_clipboard.rs"
+test = false
 
 # ---------- 富文本（核心 API，无需 feature） ----------
 [[bin]]
 name = "rich_text"
 path = "src/bin/rich_text.rs"
+test = false
 
 # ---------- Ink 笔迹（核心 API，无需 feature） ----------
 [[bin]]
 name = "ink"
 path = "src/bin/ink.rs"
+test = false
 
 # ---------- 缩略图排序器（核心 API，无需 feature） ----------
 [[bin]]
 name = "sorter"
 path = "src/bin/sorter.rs"
+test = false
 
 # ---------- 动画时间线（核心 API，无需 feature） ----------
 [[bin]]
 name = "timeline"
 path = "src/bin/timeline.rs"
+test = false
 
 # ---------- 取色器增强（核心 API，无需 feature） ----------
 [[bin]]
 name = "color_picker"
 path = "src/bin/color_picker.rs"
+test = false
 
 # ---------- 多文档界面（核心 API，无需 feature） ----------
 [[bin]]
 name = "mdi"
 path = "src/bin/mdi.rs"
+test = false
 
 # ---------- 任务窗格（核心 API，无需 feature） ----------
 [[bin]]
 name = "task_pane"
 path = "src/bin/task_pane.rs"
+test = false
 
 # ---------- 画布语义（核心 API，无需 feature） ----------
 [[bin]]
 name = "canvas_a11y"
 path = "src/bin/canvas_a11y.rs"
+test = false
 
 # ---------- 国际文本排版（核心 API，无需 feature） ----------
 [[bin]]
 name = "intl_text"
 path = "src/bin/intl_text.rs"
-
-# ---------- 套件基座（ribbon / viewport feature） ----------
-[[bin]]
-name = "command_registry"
-path = "src/bin/command_registry.rs"
-required-features = ["ribbon"]
+test = false
 
 # 应用套件基座整合演示（Ribbon + QAT + Backstage + 按键提示 + 分页视口共用一份命令表）。
 [[bin]]
@@ -343,69 +326,54 @@ name = "automation"
 path = "src/bin/automation.rs"
 required-features = ["control-channel"]
 
-[[bin]]
-name = "ribbon"
-path = "src/bin/ribbon.rs"
-required-features = ["ribbon"]
 
-[[bin]]
-name = "qat"
-path = "src/bin/qat.rs"
-required-features = ["ribbon"]
 
-[[bin]]
-name = "mini_toolbar"
-path = "src/bin/mini_toolbar.rs"
-required-features = ["ribbon"]
 
-[[bin]]
-name = "backstage"
-path = "src/bin/backstage.rs"
-required-features = ["ribbon"]
 
-[[bin]]
-name = "viewport"
-path = "src/bin/viewport.rs"
-required-features = ["viewport"]
 
-[[bin]]
-name = "ruler"
-path = "src/bin/ruler.rs"
-required-features = ["viewport"]
 
-[[bin]]
-name = "canvas_objects"
-path = "src/bin/canvas_objects.rs"
-required-features = ["viewport"]
 
-# ---------- 电子表格基座（spreadsheet feature） ----------
-[[bin]]
-name = "formula_bar"
-path = "src/bin/formula_bar.rs"
-required-features = ["spreadsheet"]
-
-[[bin]]
-name = "sheet_grid"
-path = "src/bin/sheet_grid.rs"
-required-features = ["spreadsheet"]
-
-# ---------- 文档套件基座（document feature） ----------
-[[bin]]
-name = "page_view"
-path = "src/bin/page_view.rs"
-required-features = ["viewport", "document"]
-
-[[bin]]
-name = "dock"
-path = "src/bin/dock.rs"
-
-[[bin]]
-name = "chat"
-path = "src/bin/chat.rs"
 
 [[bin]]
 name = "icons"
 path = "src/bin/icons.rs"
+test = false
+
+# 交互类示例集合（拖拽 / 焦点 / 制表位 / 压感 / 菜单 / 通知等）
+[[bin]]
+name = "interaction_gallery"
+path = "src/bin/interaction_gallery.rs"
+test = false
+
+# 布局类示例集合（网格 / 状态栏 / 停靠 / 对话 / 树 / 路径基准）
+[[bin]]
+name = "layout_gallery"
+path = "src/bin/layout_gallery.rs"
+test = false
+
+# 绘制类示例集合（渐变 / 图案 / 画布绘制）
+[[bin]]
+name = "paint_gallery"
+path = "src/bin/paint_gallery.rs"
+test = false
+
+[[bin]]
+name = "ribbon_gallery"
+path = "src/bin/ribbon_gallery.rs"
+required-features = ["ribbon"]
+test = false
+
+[[bin]]
+name = "viewport_gallery"
+path = "src/bin/viewport_gallery.rs"
+required-features = ["viewport"]
+test = false
+
+[[bin]]
+name = "spreadsheet_gallery"
+path = "src/bin/spreadsheet_gallery.rs"
+required-features = ["spreadsheet"]
+test = false
 
 [lints]
 workspace = true

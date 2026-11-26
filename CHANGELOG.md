@@ -10,6 +10,18 @@
 
 - **Linux X11 中文输入导致崩溃**：更新 XIM 输入法组件，修复中文输入时因字符编码解码失败而退出的问题。
 
+### 其他
+
+- **CI 构建提速（不改变对外行为）**：示例 bin 由 116 个精简合并到 77 个（小示例合并为
+  带子命令的 gallery，无真实测试的 bin 设 `test = false`），删除零调用点的复现示例
+  `shadow_repro` 与死代码 `TempTree`（连带移除 vendored libgit2 的 C 编译）；CI 删除
+  冗余重复步骤、合并 feature 检查命令、把平台无关的 fmt 移到单次 hygiene job、
+  webview 改为可选 feature，并为 rust-cache 开启 `cache-on-failure`。
+  **TLS provider 保持默认**：曾尝试把 reqwest/rustls 从 `aws-lc-rs` 切到 `ring` 以省去
+  CMake 编译，但该方案要求任何直接使用 `reqwest::Client` 的调用方先安装 crypto
+  provider，是一种隐性行为变更；当前版本不引入该变更，待需要发布大版本时再作为
+  有意变更（配套迁移说明）评估。
+
 ## [1.8.3] - 2026-11-24
 
 本版为维护版，所有发布 crate 统一到 1.8.3。

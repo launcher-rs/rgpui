@@ -47,23 +47,30 @@ impl MacDisplay {
 
     /// 获取当前所有活动显示器的迭代器。
     pub fn all() -> impl Iterator<Item = Self> {
-        unsafe {
-            // 我们假设系统连接的显示器不超过 32 个。
-            let mut displays = Vec::with_capacity(32);
-            let mut display_count = 0;
-            let result = CGGetActiveDisplayList(
-                displays.capacity() as u32,
-                displays.as_mut_ptr(),
-                &mut display_count,
-            );
-
-            if result == 0 {
-                displays.set_len(display_count as usize);
-                displays.into_iter().map(MacDisplay)
+        // 先查询数量再分配：硬编码上限会在多屏（>32）机器上截断，
+        // 查询失败也不应 panic —— 返回空列表让上层回退默认显示器。
+        // 统一收集成 Vec 再返回 into_iter，避免不同分支返回不同类型。
+        let ids: Vec<u32> = unsafe {
+            let mut display_count: u32 = 0;
+            if CGGetActiveDisplayList(0, std::ptr::null_mut(), &mut display_count) != 0
+                || display_count == 0
+            {
+                log::warn!("无法获取活动显示器列表，返回空列表");
+                Vec::new()
             } else {
-                panic!("Failed to get active display list. Result: {result}");
+                let mut displays = vec![0u32; display_count as usize];
+                if CGGetActiveDisplayList(display_count, displays.as_mut_ptr(), &mut display_count)
+                    != 0
+                {
+                    log::warn!("获取活动显示器详情失败，返回空列表");
+                    Vec::new()
+                } else {
+                    displays.truncate(display_count as usize);
+                    displays
+                }
             }
-        }
+        };
+        ids.into_iter().map(MacDisplay)
     }
 }
 

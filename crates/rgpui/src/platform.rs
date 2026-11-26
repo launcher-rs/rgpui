@@ -376,8 +376,15 @@ pub trait Platform: 'static {
     }
 
     /// 在系统默认浏览器中打开 URL。
+    ///
+    /// 这是 fire-and-forget 调用：各平台异步启动外部程序，失败只记日志，
+    /// 调用方无法从此方法得知是否成功（部分平台会回退到门户 API）。
     fn open_url(&self, url: &str);
     /// 注册 URL scheme 回调，当应用通过自定义 URL scheme 打开时触发。
+    ///
+    /// 各平台从各自的系统入口派发：macOS 由 AppKit 的 `application:openURLs:` 调用；
+    /// Linux 在回调注册时重放本次启动命令行里由桌面入口 `%u` 传入的 URL；
+    /// Windows 当前只保存回调、没有派发点。
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>);
     /// 注册自定义 URL scheme（如 `myapp://`），使系统将该 scheme 的 URL 分发到本应用。
     fn register_url_scheme(&self, url: &str) -> Task<Result<()>>;
@@ -396,6 +403,8 @@ pub trait Platform: 'static {
     /// 文件选择对话框是否支持同时选择文件和目录。
     fn can_select_mixed_files_and_dirs(&self) -> bool;
     /// 在系统文件管理器中显示（reveal）指定路径。
+    ///
+    /// 同 `open_url`：fire-and-forget，失败只记日志，调用方无从判断结果。
     fn reveal_path(&self, path: &Path);
     /// 使用系统默认应用打开指定路径。
     fn open_with_system(&self, path: &Path);
@@ -512,6 +521,9 @@ pub trait Platform: 'static {
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
     /// 注册全局系统快捷键，`id` 用于标识快捷键，`keystroke` 定义按键组合。
+    ///
+    /// 注意：trait 默认实现返回 `Ok(())` 但什么都不做。未覆盖此方法的后端会
+    /// 「注册成功」却永远收不到按键；Wayland 会如实返回不支持的错误。
     fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
         Ok(())
     }
@@ -521,11 +533,17 @@ pub trait Platform: 'static {
     fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {}
 
     /// 显示系统通知，返回 `Ok(())` 表示通知已发送。
+    ///
+    /// trait 默认实现返回 `Ok(())` 但什么都不做（1.4.1 批量修过一批这类
+    /// 「假实现」）。Linux 无头构建会如实报错；调用方不能只看 `Ok` 判断送达。
     fn show_notification(&self, _title: &str, _body: &str) -> Result<()> {
         Ok(())
     }
 
     /// 设置开机自启动，`app_id` 为应用唯一标识。
+    ///
+    /// trait 默认实现返回 `Ok(())` 但什么都不做；`is_auto_launch_enabled` 同理
+    /// 恒返回 `false`。未覆盖的后端上不要据此判断自启已生效。
     fn set_auto_launch(&self, _app_id: &str, _enabled: bool) -> Result<()> {
         Ok(())
     }
@@ -535,6 +553,10 @@ pub trait Platform: 'static {
     }
 
     /// 返回当前系统中获得焦点的窗口信息（标题、进程名等）。
+    ///
+    /// Wayland 原生会话恒为 `None`（没有读取其它客户端窗口信息的协议），
+    /// 调用方无法区分「不支持」与「当前没有焦点窗口」。macOS 当前只提供
+    /// app_name / bundle_id / pid，`window_title` 为空。
     fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
         None
     }
@@ -1224,6 +1246,10 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 注册窗口关闭请求回调，返回 `false` 可阻止关闭。
     fn on_should_close(&self, callback: Box<dyn FnMut() -> bool>);
     /// 注册窗口控件区域命中测试回调（用于自定义标题栏拖拽区域）。
+    ///
+    /// 只有 Windows / Web 后端会在命中测试时调用该回调；Linux 与 macOS 后端当前
+    /// 不读取它。跨平台标题栏应改用显式鼠标事件 + `Window::start_window_move` /
+    /// `zoom_window` / `minimize_window`，或直接使用 [`crate::title_bar::TitleBar`]。
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>);
     /// 注册窗口关闭回调，窗口关闭时调用。
     fn on_close(&self, callback: Box<dyn FnOnce()>);
@@ -1341,6 +1367,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 设置 Wayland app_id（用于窗口标识和桌面集成）。
     fn set_app_id(&mut self, _app_id: &str) {}
     /// 映射窗口（X11 下将窗口显示到屏幕）。
+    ///
+    /// Wayland 没有对应的显式操作：窗口在建窗时 `surface.commit()` 即隐式映射，
+    /// 走此默认实现返回 `Ok(())` 并非失败，而是「平台隐式完成」。
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -1394,6 +1423,10 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
+    ///
+    /// 只有 X11 真正实现（ICCM `WM_HINTS` urgency 位）；Wayland 无对应协议、
+    /// Windows 与 macOS 也未实现，走默认空操作。需要跨端提示时请改用
+    /// `App::show_notification`。
     fn request_attention(&self) {}
 
     /// 请求再出一帧（即使窗口当前没有失效区域）。
@@ -1410,6 +1443,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn request_frame(&self) {}
 
     /// 设置窗口在屏幕上的位置。
+    ///
+    /// X11 / Windows 会真正设置；Wayland 只改内部 geometry，合成器可不尊重该请求；
+    /// macOS 当前为空操作。调用方不应假定位置一定生效。
     fn set_position(&mut self, _position: Point<Pixels>) {}
 
     /// 隐藏窗口（从任务栏移除，托盘模式下使用）。
@@ -2207,13 +2243,18 @@ pub struct WindowOptions {
     /// 要创建的窗口类型
     pub kind: WindowKind,
 
-    /// 窗口是否可被用户拖拽移动
+    /// 窗口是否可被用户拖拽移动。
+    /// Windows 用窗口样式落地；X11 写入 Motif functions 位（尊重它的 WM 生效）；
+    /// Wayland 没有禁止移动的协议，`false` 仅用于让框架收敛标题栏交互。
     pub is_movable: bool,
 
-    /// 窗口是否可被用户调整大小
+    /// 窗口是否可被用户调整大小。
+    /// Windows / X11 会真正阻止缩放，Wayland 尽力而为（协议不提供强制禁用）。
     pub is_resizable: bool,
 
-    /// 窗口是否可被用户最小化
+    /// 窗口是否可被用户最小化。
+    /// Windows / X11 会真正阻止最小化，Wayland 尽力而为。
+    /// 三个平台都会让 `window_controls()` 收敛对应按钮，不画出点不动的按钮。
     pub is_minimizable: bool,
 
     /// 在哪个显示器上创建窗口，若为 None，
@@ -2229,8 +2270,16 @@ pub struct WindowOptions {
     /// 窗口最小尺寸
     pub window_min_size: Option<Size<Pixels>>,
 
-    /// 使用客户端还是服务端装饰。仅 Wayland。
-    /// 注意此设置可能被忽略。
+    /// 使用客户端还是服务端装饰（Wayland 与 X11）。
+    ///
+    /// 这只是**请求**：Wayland 无 xdg-decoration 支持时服务端装饰会回退为客户端
+    /// 装饰，X11 无合成器时客户端装饰会回退为服务端装饰。回退记 `warn` 日志，
+    /// 实际生效值用 `Window::window_decorations()` 查询。
+    ///
+    /// 保持 `None`（期望系统装饰）的普通顶层窗口在回退为客户端装饰时，框架会
+    /// 自动补画一个默认标题栏，以避免 Wayland 上「系统不画、应用也不画」的
+    /// 无标题栏窗口；显式设为 [`WindowDecorations::Client`] 表示应用自行渲染
+    /// `TitleBar`，框架不会重复补画。
     pub window_decorations: Option<WindowDecorations>,
 
     /// 图标图片（仅 X11）

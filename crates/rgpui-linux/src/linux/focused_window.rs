@@ -15,6 +15,14 @@ use rgpui::FocusedWindowInfo;
 /// 能确定活动窗口时返回窗口信息；Wayland 原生会话、无法连接 X11、或窗口
 /// 尚未设置 EWMH 属性时返回 `None`。
 pub fn get_focused_window_info() -> Option<FocusedWindowInfo> {
+    // 只看 feature 是不够的：Wayland 原生会话里 DISPLAY 常被 XWayland 占用，
+    // 此时 x11rb 能连上并返回某个 XWayland 客户端的信息，但它不是用户当前
+    // 聚焦的原生 Wayland 窗口 —— 这是「看起来有数据、其实是错的」。
+    // 按实际会话判断，Wayland 下如实返回 None。
+    if rgpui::guess_compositor() == "Wayland" {
+        return None;
+    }
+
     #[cfg(feature = "x11")]
     return x11_focused_window();
 

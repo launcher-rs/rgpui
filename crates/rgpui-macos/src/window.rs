@@ -545,8 +545,12 @@ struct MacWindowState {
     resize_callback: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
     moved_callback: Option<Box<dyn FnMut()>>,
     should_close_callback: Option<Box<dyn FnMut() -> bool>>,
+    /// 关闭询问回调正在执行中（嵌套的 windowShouldClose 不能返回 YES 放行关闭）
+    should_close_in_progress: bool,
     close_callback: Option<Box<dyn FnOnce()>>,
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
+    /// 红绿灯按钮布局变化回调（进入/退出全屏时按钮位置改变）
+    button_layout_changed_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
     last_key_equivalent: Option<KeyDownEvent>,
     synthetic_drag_counter: usize,
@@ -775,6 +779,10 @@ impl MacWindowState {
     fn window_bounds(&self) -> WindowBounds {
         if self.is_fullscreen() {
             WindowBounds::Fullscreen(self.fullscreen_restore_bounds)
+        } else if self.is_maximized() {
+            // 绿钮最大化后保存/恢复窗口状态时必须能还原成 Maximized，
+            // 否则重启只会恢复成普通大小
+            WindowBounds::Maximized(self.bounds())
         } else {
             WindowBounds::Windowed(self.bounds())
         }
@@ -800,6 +808,7 @@ impl MacWindow {
             display_id,
             window_min_size,
             tabbing_identifier,
+            mouse_passthrough,
             ..
         }: WindowParams,
         cursor_visible: Arc<AtomicBool>,
@@ -937,8 +946,10 @@ impl MacWindow {
                 resize_callback: None,
                 moved_callback: None,
                 should_close_callback: None,
+                should_close_in_progress: false,
                 close_callback: None,
                 appearance_changed_callback: None,
+                button_layout_changed_callback: None,
                 input_handler: None,
                 last_key_equivalent: None,
                 synthetic_drag_counter: 0,
@@ -984,6 +995,11 @@ impl MacWindow {
             }
 
             native_window.setMovable_(is_movable as BOOL);
+            // 桌面宠物/覆盖层场景：此前 macOS 建窗路径用 `..` 吞掉了该字段，
+            // 设 mouse_passthrough 完全无效；NSWindow 的 ignoresMouseEvents 即对应能力。
+            if mouse_passthrough {
+                let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
+            }
 
             if let Some(window_min_size) = window_min_size {
                 native_window.setContentMinSize_(NSSize {
@@ -1138,7 +1154,9 @@ impl MacWindow {
                 return None;
             }
 
-            if msg_send![main_window, isKindOfClass: WINDOW_CLASS] {
+            // 用 is_gpui_window 而非只判断 WINDOW_CLASS：Popup/Overlay/Floating/
+            // Dialog 窗口是以 PANEL_CLASS 创建的，此前会被漏掉
+            if is_gpui_window(main_window) {
                 let handle = get_window_state(&*main_window).lock().handle;
                 Some(handle)
             } else {
@@ -1156,7 +1174,7 @@ impl MacWindow {
             let mut window_handles = Vec::new();
             for i in 0..count {
                 let window: id = msg_send![windows, objectAtIndex:i];
-                if msg_send![window, isKindOfClass: WINDOW_CLASS] {
+                if is_gpui_window(window) {
                     let handle = get_window_state(&*window).lock().handle;
                     window_handles.push(handle);
                 }
@@ -1663,6 +1681,50 @@ impl PlatformWindow for MacWindow {
             .detach();
     }
 
+    /// 运行时切换鼠标穿透（与建窗时的 `mouse_passthrough` 字段对应）。
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        let window = self.0.lock().native_window;
+        unsafe {
+            let _: () = msg_send![window, setIgnoresMouseEvents: passthrough as BOOL];
+        }
+    }
+
+    fn set_position(&mut self, position: Point<Pixels>) {
+        // 与建窗时（1124 行）用同一 API；必须切到主线程，NSWindow 非线程安全。
+        let this = self.0.lock();
+        let window = this.native_window;
+        let closed = this.closed.clone();
+        this.foreground_executor
+            .spawn(async move {
+                if_window_not_closed(closed, || unsafe {
+                    NSWindow::setFrameTopLeftPoint_(
+                        window,
+                        NSPoint::new(position.x.as_f32() as f64, position.y.as_f32() as f64),
+                    );
+                })
+            })
+            .detach();
+    }
+
+    /// 窗口级隐藏（从屏幕与窗口列表移除，托盘驻留场景用）。
+    /// 与 App::hide()（隐藏整个应用）语义不同。
+    fn hide(&self) {
+        let window = self.0.lock().native_window;
+        unsafe {
+            let _: () = msg_send![window, orderOut: nil];
+        }
+    }
+
+    /// 请求用户注意：macOS 用 NSApp.requestUserAttention 弹跳 Dock 图标。
+    /// 此前该方法在 macOS 走 trait 默认空实现，调用方以为已提醒但什么都没发生。
+    fn request_attention(&self) {
+        unsafe {
+            let app = NSApplication::sharedApplication(nil);
+            // NSCriticalAttentionRequestType = 2；用有限次请求避免一直弹跳
+            let _: () = msg_send![app, requestUserAttention: 2u64];
+        }
+    }
+
     fn minimize(&self) {
         let window = self.0.lock().native_window;
         unsafe {
@@ -1744,6 +1806,10 @@ impl PlatformWindow for MacWindow {
         self.0.lock().appearance_changed_callback = Some(callback);
     }
 
+    fn on_button_layout_changed(&self, callback: Box<dyn FnMut()>) {
+        self.0.lock().button_layout_changed_callback = Some(callback);
+    }
+
     fn tabbed_windows(&self) -> Option<Vec<SystemWindowTab>> {
         unsafe {
             let windows: id = msg_send![self.0.lock().native_window, tabbedWindows];
@@ -1755,7 +1821,7 @@ impl PlatformWindow for MacWindow {
             let mut result = Vec::new();
             for i in 0..count {
                 let window: id = msg_send![windows, objectAtIndex:i];
-                if msg_send![window, isKindOfClass: WINDOW_CLASS] {
+                if is_gpui_window(window) {
                     let handle = get_window_state(&*window).lock().handle;
                     let title: id = msg_send![window, title];
                     let title = SharedString::from(title.to_str().to_string());
@@ -1810,7 +1876,7 @@ impl PlatformWindow for MacWindow {
     }
 
     fn gpu_specs(&self) -> Option<rgpui::GpuSpecs> {
-        None
+        Some(self.0.lock().renderer.gpu_specs())
     }
 
     fn update_ime_position(&self, _bounds: Bounds<Pixels>) {
@@ -1939,12 +2005,20 @@ impl PlatformWindow for MacWindow {
     }
 
     fn set_text_content_type(&self, content_type: Option<&'static str>) {
-        let view = self.0.lock().native_view.as_ptr();
-        let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });
-        let ns_content_type = ns_content_type.unwrap_or(nil);
-        unsafe {
-            let _: () = msg_send![view, setContentType: ns_content_type];
-        }
+        let this = self.0.lock();
+        let view = this.native_view;
+        let foreground = this.foreground_executor.clone();
+        drop(this);
+        // AppKit 必须在主线程调用；与其它 NSWindow/NSView 操作一样切到前台执行器
+        foreground
+            .spawn(async move {
+                let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });
+                let ns_content_type = ns_content_type.unwrap_or(nil);
+                unsafe {
+                    let _: () = msg_send![view.as_ptr(), setContentType: ns_content_type];
+                }
+            })
+            .detach();
     }
 }
 
@@ -2039,6 +2113,12 @@ extern "C" fn dealloc_window(this: &Object, _: Sel) {
 
 extern "C" fn dealloc_view(this: &Object, _: Sel) {
     unsafe {
+        // 语义内容类型表按视图指针索引，视图销毁时必须清理，
+        // 否则 items 持有 Retained<NSString> 永久驻留
+        let key = this as *const _ as usize;
+        CONTENT_TYPES.with(|content_types| {
+            content_types.borrow_mut().remove(&key);
+        });
         drop_window_state(this);
         let _: () = msg_send![super(this, class!(NSView)), dealloc];
     }
@@ -2485,6 +2565,14 @@ extern "C" fn window_will_enter_fullscreen(this: &Object, _: Sel, _: id) {
     lock.fullscreen_restore_bounds = lock.bounds();
     lock.restore_traffic_light();
 
+    // 红绿灯位置随全屏切换改变，通知订阅者重读 button_layout
+    if let Some(mut callback) = lock.button_layout_changed_callback.take() {
+        drop(lock);
+        callback();
+        window_state.lock().button_layout_changed_callback = Some(callback);
+    }
+    let lock = window_state.as_ref().lock();
+
     let min_version = NSOperatingSystemVersion::new(15, 3, 0);
 
     if is_macos_version_at_least(min_version) {
@@ -2512,6 +2600,16 @@ extern "C" fn window_did_exit_fullscreen(this: &Object, _: Sel, _: id) {
     // WINDOW_STATE_IVAR with an Arc<Mutex<MacWindowState>> during window creation.
     let window_state = unsafe { get_window_state(this) };
     window_state.as_ref().lock().move_traffic_light();
+
+    if let Some(mut callback) = window_state
+        .as_ref()
+        .lock()
+        .button_layout_changed_callback
+        .take()
+    {
+        callback();
+        window_state.as_ref().lock().button_layout_changed_callback = Some(callback);
+    }
 }
 
 pub(crate) fn is_macos_version_at_least(version: NSOperatingSystemVersion) -> bool {
@@ -2647,10 +2745,18 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
 extern "C" fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
     let window_state = unsafe { get_window_state(this) };
     let mut lock = window_state.as_ref().lock();
+    // 回调被 take 出来执行期间若嵌套再收到关闭询问（确认对话框里 remove_window /
+    // quit 等），绝不能返回 YES —— 那会让用户点了「取消」窗口仍被关闭。
+    if lock.should_close_in_progress {
+        return NO;
+    }
     if let Some(mut callback) = lock.should_close_callback.take() {
+        lock.should_close_in_progress = true;
         drop(lock);
         let should_close = callback();
-        window_state.lock().should_close_callback = Some(callback);
+        let mut lock = window_state.lock();
+        lock.should_close_in_progress = false;
+        lock.should_close_callback = Some(callback);
         should_close as BOOL
     } else {
         YES

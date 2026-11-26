@@ -3,6 +3,12 @@ name = "layer_shell"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
+
+[[bin]]
+name = "layer_shell"
+path = "src/main.rs"
+test = false
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rgpui = { workspace = true, features = ["wayland"] }

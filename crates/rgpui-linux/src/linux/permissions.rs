@@ -125,13 +125,10 @@ fn check_screen_capture() -> PermissionStatus {
 #[cfg(any(feature = "x11", feature = "wayland"))]
 fn check_input_monitoring() -> PermissionStatus {
     if is_wayland_session() {
-        // Wayland 上要拿到全局按键只有 global-shortcuts 门户这一条路
-        // （rgpui 的全局热键目前只在 X11 上实现，见审计文档 §4.2-2）
-        return if portal_interface_available("org.freedesktop.portal.GlobalShortcuts") {
-            PermissionStatus::NotDetermined
-        } else {
-            PermissionStatus::Unavailable
-        };
+        // Wayland 的全局热键注册目前恒返回「不支持」（只在 X11 实现了根窗口
+        // GrabKey），门户即使提供 GlobalShortcuts 我们也没有接注册/派发。
+        // 这里必须如实报 Unavailable，否则 UI 显示「可申请」但注册总失败。
+        return PermissionStatus::Unavailable;
     }
     if std::env::var_os("DISPLAY").is_some() {
         // 根窗口 GrabKey 不需要授权，X11 全局热键正是建立在这之上

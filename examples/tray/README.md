@@ -8,6 +8,13 @@ Linux Wayland 的普通窗口支持真正隐藏到托盘：`hide_window()` 取�
 `minimize_window()` 仍然只最小化。KDE 提供的托盘激活令牌会保留到恢复首帧后使用。
 Layer shell 和 popup 不属于此普通窗口隐藏/恢复流程。
 
+**标题栏的平台差异**：示例用 `TitleBar::window_options()` 请求客户端装饰（自绘标题栏）。
+Wayland 上通常直接生效；X11 上若没有合成器或缺少 `_GTK_FRAME_EXTENTS`，窗口管理器
+会回退到服务端装饰并画原生标题栏。框架在这类环境下会收敛自绘标题栏，避免
+「原生框架 + 自绘栏」重复；可用 `RUST_LOG=warn` 观察回退日志，用
+`Window::window_decorations()` 查询协商后的实际值。无论哪种装饰，关闭按钮都走
+`on_window_should_close`（隐藏到托盘），行为一致。
+
 手工回归时检查：关闭后任务栏入口消失、托盘恢复可交互、后台更新不会重新显示窗口、
 快速重复隐藏/显示、最大化/全屏恢复，以及隐藏期间切换显示器缩放。
 

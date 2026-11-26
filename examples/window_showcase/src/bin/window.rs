@@ -94,7 +94,7 @@ struct WindowDemo {
 }
 
 impl Render for WindowDemo {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let window_bounds =
             WindowBounds::Windowed(Bounds::centered(None, size(px(300.0), px(300.0)), cx));
 
@@ -253,12 +253,20 @@ impl Render for WindowDemo {
             }))
             .child({
                 let entity = cx.entity();
-                let label = if self.titlebar_visible {
-                    "Hide Titlebar"
-                } else {
-                    "Show Titlebar"
+                // set_titlebar_visible 只在服务端装饰下有效：Wayland 无对应协议、
+                // 客户端装饰下服务端本就不画标题栏（由 TitleBar 元素绘制）。
+                let titlebar_toggle_supported =
+                    matches!(window.window_decorations(), rgpui::Decorations::Server);
+                let label: &'static str = match (self.titlebar_visible, titlebar_toggle_supported) {
+                    (true, true) => "Hide Titlebar",
+                    (false, true) => "Show Titlebar",
+                    (true, false) => "Hide Titlebar (N/A)",
+                    (false, false) => "Show Titlebar (N/A)",
                 };
                 button(label, move |window, app| {
+                    if !titlebar_toggle_supported {
+                        return;
+                    }
                     let visible = entity.update(app, |demo, _| {
                         demo.titlebar_visible = !demo.titlebar_visible;
                         demo.titlebar_visible

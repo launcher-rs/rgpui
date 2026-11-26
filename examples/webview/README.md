@@ -6,7 +6,11 @@
 ## 运行
 
 ```text
-cargo run -p webview_example
+cargo run -p webview_example --features webview
 ```
+
+`wry` / `rgpui-webview` 链需要各平台 SDK（Linux 为 WebKitGTK），已设为可选 feature，
+默认 `cargo check --workspace` 不会编译它；CI 用
+`cargo check -p webview_example --features webview` 单独覆盖。
 
 注意包名为 `webview_example`（目录名为 `webview`）。

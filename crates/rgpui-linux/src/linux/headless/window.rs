@@ -56,6 +56,11 @@ struct HeadlessWindowState {
     input_handler: Option<PlatformInputHandler>,
     title: Option<String>,
     is_fullscreen: bool,
+    /// 无合成器驱动帧循环：保存回调，在每次 draw 后主动回调一次，
+    /// 让「等一帧」的 Future 在无头模式下也能 resolve。
+    frame_callback: Option<Box<dyn FnMut(RequestFrameOptions)>>,
+    /// 下一帧被请求的选项；由 draw 消费
+    pending_frame: Option<RequestFrameOptions>,
 }
 
 pub(crate) struct HeadlessWindow(Rc<RefCell<HeadlessWindowState>>);
@@ -85,6 +90,8 @@ impl HeadlessWindow {
             input_handler: None,
             title: None,
             is_fullscreen: false,
+            frame_callback: None,
+            pending_frame: None,
         })))
     }
 }
@@ -190,9 +197,18 @@ impl PlatformWindow for HeadlessWindow {
         self.0.borrow().is_fullscreen
     }
 
-    // No compositor drives a frame loop, so frame and status callbacks are
-    // dropped: anything that awaits a frame will never resolve headlessly.
-    fn on_request_frame(&self, _callback: Box<dyn FnMut(RequestFrameOptions)>) {}
+    // 无合成器不驱动帧循环：保存回调并标记待交付帧，在 draw 里主动续一帧，
+    // 否则任何等待帧的逻辑在无头模式下永远挂起。
+    fn request_frame(&self) {
+        self.0.borrow_mut().pending_frame = Some(RequestFrameOptions {
+            require_presentation: false,
+            force_render: false,
+        });
+    }
+
+    fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
+        self.0.borrow_mut().frame_callback = Some(callback);
+    }
 
     fn on_input(&self, _callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>) {}
 
@@ -209,11 +225,28 @@ impl PlatformWindow for HeadlessWindow {
     fn on_close(&self, _callback: Box<dyn FnOnce()>) {}
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 无头窗口没有系统命中测试；核心也只在 Windows / Web 注册该回调，
+        // 这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, _callback: Box<dyn FnMut()>) {}
 
-    fn draw(&self, _scene: &Scene) {}
+    fn draw(&self, _scene: &Scene) {
+        // 先取出回调再调用：回调里可能回到这个 Window 请求下一帧/检查状态，
+        // 持着 RefCell 借用会重入 panic。
+        let (callback, options) = {
+            let mut state = self.0.borrow_mut();
+            let options = state.pending_frame.take().unwrap_or(RequestFrameOptions {
+                require_presentation: false,
+                force_render: false,
+            });
+            (state.frame_callback.take(), options)
+        };
+        if let Some(mut callback) = callback {
+            callback(options);
+            self.0.borrow_mut().frame_callback = Some(callback);
+        }
+    }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         Arc::new(HeadlessAtlas::default())

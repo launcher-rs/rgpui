@@ -47,7 +47,20 @@ impl Cursor {
             shm: globals.shm.clone(),
             connection: connection.clone(),
         };
+        // 先按环境变量/系统默认加载；失败时依次尝试常见兜底主题名，
+        // 避免主题目录配错时指针完全消失（原实现只记 warn 就 return）。
         this.set_theme_internal(None);
+        if this.loaded_theme.is_none() {
+            for fallback in ["default", "Adwaita", "xcursor"] {
+                this.set_theme_internal(Some(fallback.to_owned()));
+                if this.loaded_theme.is_some() {
+                    break;
+                }
+            }
+        }
+        if this.loaded_theme.is_none() {
+            log::warn!("Wayland: 没有可用的光标主题，指针图标可能不可见");
+        }
         this
     }
 
@@ -115,8 +128,14 @@ impl Cursor {
     ) {
         self.set_scaled_size(self.size * scale as u32);
 
+        if self.loaded_theme.is_none() {
+            // 建 Cursor 时已尝试过默认与兜底主题仍失败：这里再试一次默认加载，
+            // 仍失败就提交一个空 surface，至少不会让旧图标卡在屏幕上。
+            self.set_theme_internal(None);
+        }
         let Some(loaded_theme) = &mut self.loaded_theme else {
-            log::warn!("Wayland: Unable to load cursor themes");
+            log::warn!("Wayland: 无法设置光标图标，没有可用的主题");
+            self.surface.commit();
             return;
         };
         let theme = &mut loaded_theme.theme;

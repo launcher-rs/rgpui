@@ -71,9 +71,12 @@ pub(crate) trait LinuxClient {
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
 
+    /// 能力声明必须与 `screen_capture_sources` 的实际能力一致。默认不宣称支持：
+    /// 真正实现了捕获的后端（目前是 X11）显式覆盖为 `true`，Wayland 与无头后端
+    /// 保持 `false`——否则 UI 会按 `true` 进入取色/截图流程，随后拿到一个 Err。
     #[cfg(feature = "screen-capture")]
     fn is_screen_capture_supported(&self) -> bool {
-        true
+        false
     }
 
     #[cfg(feature = "screen-capture")]
@@ -262,18 +265,27 @@ impl LinuxCommon {
         (common, main_receiver, power_receiver)
     }
 
-    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道
+    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道。
+    /// 失败时带退避重试（无 login1 / 权限不足等场景），不再永久静默。
     pub(crate) fn start_power_listener(&mut self) {
         if !self.power_listener_started {
             #[cfg(any(feature = "wayland", feature = "x11"))]
             smol::spawn({
                 let power_sender = self.power_sender.clone();
                 async move {
-                    if let Err(error) =
-                        crate::linux::power::listen_for_system_power(power_sender).await
-                    {
-                        // 监听挂了之后电源/唤醒事件不会再来，应用侧无处察觉，原因只能记在这里
-                        log::warn!("监听系统电源事件失败，电源事件将不再送达: {error:#}");
+                    let mut delay = std::time::Duration::from_secs(2);
+                    const MAX_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+                    loop {
+                        match crate::linux::power::listen_for_system_power(power_sender.clone())
+                            .await
+                        {
+                            Ok(()) => return,
+                            Err(error) => {
+                                log::warn!("监听系统电源事件失败，{delay:?} 后重试: {error:#}");
+                                smol::Timer::after(delay).await;
+                                delay = delay.saturating_mul(2).min(MAX_DELAY);
+                            }
+                        }
                     }
                 }
             })
@@ -343,6 +355,37 @@ impl LinuxCommon {
     }
 }
 
+/// 从命令行参数里挑出桌面环境通过 URL scheme 传入的 URL。
+///
+/// 注册的桌面入口用 `Exec=... %u`，桌面环境会把完整 URL（如 `myapp://open?x=1`）
+/// 作为**单个**参数传给新启动的进程。这里只接受「scheme:」形式的参数，避免把
+/// `--flag`、普通文件路径或 Windows 盘符误判成 URL。scheme 至少需要两个字符。
+fn urls_from_args<I, S>(args: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    args.into_iter()
+        .filter_map(|arg| {
+            let url = arg.as_ref();
+            let colon = url.find(':')?;
+            let scheme = &url[..colon];
+            let valid_scheme = scheme.len() >= 2
+                && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+            // 绝对路径与点开头的相对路径不是 URL
+            (valid_scheme && !url.starts_with(['/', '.'])).then(|| url.to_string())
+        })
+        .collect()
+}
+
+/// 本次启动由桌面环境传入的 URL（跳过 argv[0]）。
+fn startup_urls() -> Vec<String> {
+    urls_from_args(env::args().skip(1))
+}
+
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
     pub(crate) notifications: LinuxNotifications,
@@ -391,6 +434,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             if let Some(tooltip) = &tray.tooltip {
                 handle.set_tooltip(tooltip);
             }
+            // 旧 API 的 Tray::visible 此前三个平台都不读；Linux 用 SNI Status
+            // （Active/Passive）如实落地，隐藏时主机不再显示图标
+            handle.set_visible(tray.visible);
             let items = menus
                 .as_ref()
                 .map(|menus| convert_menu_items_to_tray(menus))
@@ -591,8 +637,20 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>) {
+        let urls = startup_urls();
         self.inner
             .with_common(|common| common.callbacks.open_urls = Some(callback));
+        if !urls.is_empty() {
+            // 回调可能在里面访问平台状态（开窗、读文件等），必须先把回调从
+            // with_common 的借用里取出来再调用，避免 RefCell 重入 panic。
+            let mut callback = self
+                .inner
+                .with_common(|common| common.callbacks.open_urls.take())
+                .unwrap_or_else(|| Box::new(|_| {}));
+            callback(urls);
+            self.inner
+                .with_common(|common| common.callbacks.open_urls = Some(callback));
+        }
     }
 
     fn prompt_for_paths(
@@ -1520,6 +1578,26 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
 mod tests {
     use super::*;
     use rgpui::{Point, px};
+
+    /// scheme URL 抽取：只认合法 scheme，排除开关、路径与盘符样式的参数。
+    #[test]
+    fn startup_urls_only_accepts_scheme_urls() {
+        let args = [
+            "/usr/bin/myapp",
+            "--help",
+            "myapp://open?doc=1",
+            "mailto:user@example.com",
+            "/tmp/report.txt",
+            "./relative.txt",
+            "C:\\Users\\x",
+            "1bad://x",
+            "my_app://x",
+        ];
+        assert_eq!(
+            urls_from_args(args),
+            vec!["myapp://open?doc=1", "mailto:user@example.com"]
+        );
+    }
 
     #[test]
     fn test_is_within_click_distance() {

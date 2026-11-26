@@ -392,7 +392,9 @@ impl Inner {
                 }
             }
         }
-        log::trace!("所有支持的格式转换均失败");
+        // 所有支持的格式都拿不到内容，用户会看到「粘贴无反应」；
+        // 默认日志级别是 error，这里需要 warn 才能排查
+        log::warn!("所有支持的剪贴板格式转换均失败，粘贴将得不到内容");
         Err(Error::ContentNotAvailable)
     }
 
@@ -850,10 +852,11 @@ impl Inner {
             return Ok(());
         }
         if result.timed_out() {
-            log::warn!(
-                "Could not hand the clipboard contents over to the clipboard manager. The request timed out."
-            );
-            return Ok(());
+            // 此前只 warn + Ok(())，退出路径的调用方以为交接成功；改为 Err
+            // 让上层按真实结果记录 error（可能有剪贴板管理器缺失/无响应）
+            return Err(Error::unknown(
+                "Could not hand the clipboard contents over to the clipboard manager: request timed out",
+            ));
         }
 
         Err(Error::unknown(

@@ -921,6 +921,12 @@ pub fn register(&mut self, id: i32, keystroke: &Keystroke) -> Result<()> {
 
 ### 4.3 [P1] 剩 16 个 `Platform` 方法在 Linux 上是静默 no-op
 
+> ⚠️ **历史快照，已过期**：本节列于 2026-10 的审计，其中 `show_dialog`、
+> `on_media_key_event`、`read/write_from_find_pasteboard`、`authenticate_biometric`
+> 等已在 1.5.0 删除（`CHANGELOG.md:463-466`），`on_network_status_change`、
+> `system_idle_time` 等已实现。排查前请以当前 `crates/rgpui/src/platform.rs` 和
+> `docs/linux-api-parity-audit.md` 为准。
+
 对比 `crates/rgpui/src/platform.rs`（有默认空实现）与 `crates/rgpui-linux/src/linux/platform.rs`，
 Linux 缺失（**tray 8 件套已随 §4.1 移出；`os_info`、`system_idle_time`（`d6f6a4c598`）、
 `on_global_hotkey`（`d5e4819376`）、权限查询（`7fa8b7bf47`）已实现；`network_status` 已实现（`651a94a618`，见 §4.7；

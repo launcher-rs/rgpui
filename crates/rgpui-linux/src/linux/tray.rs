@@ -224,6 +224,16 @@ impl TrayHandle {
         let _ = self.commands.unbounded_send(TrayCommand::PropertiesChanged);
     }
 
+    /// 写入托盘可见性。SNI 没有 `Visible` 属性，但主机按 `Status` 决定显隐：
+    /// `Active` 显示、`Passive` 隐藏（大小写敏感）。
+    pub(crate) fn set_visible(&self, visible: bool) {
+        {
+            let mut shared = self.shared.lock();
+            shared.status = if visible { "Active" } else { "Passive" }.to_owned();
+        }
+        let _ = self.commands.unbounded_send(TrayCommand::PropertiesChanged);
+    }
+
     /// 写入工具提示并通知主机重新读取属性
     pub(crate) fn set_tooltip(&self, tooltip: &str) {
         {

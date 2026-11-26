@@ -5,6 +5,34 @@ edition = "2024"
 publish = false
 description = "窗口管理展示：窗口类型/多窗口/可移动/定位/阴影/透明/不透明度"
 
+autobins = false
+
+[[bin]]
+name = "window_showcase"
+path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "custom_title_bar"
+path = "src/bin/custom_title_bar.rs"
+test = false
+
+
+[[bin]]
+name = "overlay_probe"
+path = "src/bin/overlay_probe.rs"
+test = false
+
+
+
+[[bin]]
+name = "window"
+path = "src/bin/window.rs"
+test = false
+
+
+
+
 [dependencies]
 rgpui.workspace = true
 rgpui-platform.workspace = true

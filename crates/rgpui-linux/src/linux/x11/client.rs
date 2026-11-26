@@ -548,8 +548,20 @@ impl X11Client {
                     XDPEvent::ReduceMotion(reduce_motion) => {
                         client.with_common(|common| common.reduce_motion = reduce_motion);
                     }
+                    XDPEvent::OverlayScrolling(overlay) => {
+                        client.with_common(|common| common.auto_hide_scrollbars = overlay);
+                        // 复用 appearance 通知通道让已开窗口重读滚动条策略
+                        for window in client.0.borrow_mut().windows.values() {
+                            window.window.notify_appearance_changed();
+                        }
+                    }
                     XDPEvent::CursorTheme(_) | XDPEvent::CursorSize(_) => {
-                        // 无操作，X11 为我们管理这些
+                        // X11 的光标图标在建窗时由 cursor_handle 一次性加载并缓存，
+                        // 此前这里空操作导致系统主题/尺寸变更后应用内光标不更新
+                        // （Wayland 端会更新）。清空缓存让下次取图标时按新设置重建。
+                        let mut state = client.0.borrow_mut();
+                        state.cursor_cache.clear();
+                        state.invisible_cursor_cache = None;
                     }
                 }
             })
@@ -2227,13 +2239,14 @@ impl X11ClientState {
                 }
             }
             if errors.is_empty() {
+                // errors 为空说明所有名字都试过了、一个都没找到
+                Err(anyhow!("did not find cursor icons {:?}", cursor_icon_names))
+            } else {
                 Err(anyhow!(
                     "errors while loading cursor icons {:?}:\n{}",
                     cursor_icon_names,
                     errors
                 ))
-            } else {
-                Err(anyhow!("did not find cursor icons {:?}", cursor_icon_names))
             }
         };
 
@@ -2729,18 +2742,23 @@ fn get_scale_factor(
                 if valid_scale_factor(scale) {
                     DpiMode::Scale(scale)
                 } else {
-                    panic!(
-                        "`{}` must be a positive normal number or `randr`. Got `{}`",
-                        GPUI_X11_SCALE_FACTOR_ENV, var
+                    // 配置写错不该让应用直接崩；记 warn 后回退到自动探测
+                    log::warn!(
+                        "`{}` must be a positive normal number or `randr`. Got `{}`；回退自动探测",
+                        GPUI_X11_SCALE_FACTOR_ENV,
+                        var
                     );
+                    DpiMode::NotSet
                 }
             } else if var.is_empty() {
                 DpiMode::NotSet
             } else {
-                panic!(
-                    "`{}` must be a positive number or `randr`. Got `{}`",
-                    GPUI_X11_SCALE_FACTOR_ENV, var
+                log::warn!(
+                    "`{}` must be a positive number or `randr`. Got `{}`；回退自动探测",
+                    GPUI_X11_SCALE_FACTOR_ENV,
+                    var
                 );
+                DpiMode::NotSet
             }
         })
         .unwrap_or(DpiMode::NotSet);

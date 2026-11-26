@@ -304,83 +304,107 @@ impl RenderOnce for TitleBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_client_decorated = matches!(window.window_decorations(), Decorations::Client { .. });
         let is_web = cfg!(target_family = "wasm");
+        let is_windows = cfg!(target_os = "windows");
         let is_linux = cfg!(target_os = "linux");
         let is_macos = cfg!(target_os = "macos");
 
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
 
-        div().flex_shrink_0().child(
-            div()
-                .id("title-bar")
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .h(TITLE_BAR_HEIGHT)
-                .pl(TITLE_BAR_LEFT_PADDING)
-                .border_b_1()
-                .border_color(cx.theme().title_bar_border)
-                .bg(cx.theme().tokens.title_bar)
-                .refine_style(&self.style)
-                .when(is_linux, |this| {
-                    this.on_double_click(|_, window, _| window.zoom_window())
-                })
-                .when(is_macos, |this| {
-                    this.on_double_click(|_, window, _| window.titlebar_double_click())
-                })
-                .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
-                    state.should_move = false;
-                }))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    window.listener_for(&state, |state, _, _, _| {
-                        state.should_move = true;
-                    }),
-                )
-                .on_mouse_up(
-                    MouseButton::Left,
-                    window.listener_for(&state, |state, _, _, _| {
+        // Linux 上窗口管理器可能把请求的客户端装饰回退为服务端装饰（X11 无合成器、
+        // Wayland 合成器强制 ServerSide），此时窗口管理器已经画了原生标题栏。
+        // 自绘 chrome 必须收敛，否则会出现「原生框架 + 自绘栏」两套标题栏与两组按钮。
+        // 只限定 Linux：macOS / Web 的 window_decorations() 默认返回 Server，
+        // 但它们的标题栏由 AppKit / 浏览器提供，不能一刀切隐藏。
+        if is_linux && !is_client_decorated {
+            return div()
+                .id("title-bar-server-decorated")
+                .flex_shrink_0()
+                .children(self.children)
+                .into_any_element();
+        }
+
+        div()
+            .flex_shrink_0()
+            .child(
+                div()
+                    .id("title-bar")
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .h(TITLE_BAR_HEIGHT)
+                    .pl(TITLE_BAR_LEFT_PADDING)
+                    .border_b_1()
+                    .border_color(cx.theme().title_bar_border)
+                    .bg(cx.theme().tokens.title_bar)
+                    .refine_style(&self.style)
+                    .when(is_linux, |this| {
+                        this.on_double_click(|_, window, _| window.zoom_window())
+                    })
+                    .when(is_macos, |this| {
+                        this.on_double_click(|_, window, _| window.titlebar_double_click())
+                    })
+                    .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
                         state.should_move = false;
-                    }),
-                )
-                .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
-                    if state.should_move {
-                        state.should_move = false;
-                        window.start_window_move();
-                    }
-                }))
-                .child(
-                    h_flex()
-                        .id("bar")
-                        .h_full()
-                        .justify_between()
-                        .flex_shrink_0()
-                        .flex_1()
-                        .when(!is_web, |this| {
-                            this.window_control_area(WindowControlArea::Drag)
-                                .when(window.is_fullscreen(), |this| this.pl_3())
-                                .when(is_linux && is_client_decorated, |this| {
-                                    this.child(
-                                        div()
-                                            .top_0()
-                                            .left_0()
-                                            .absolute()
-                                            .size_full()
-                                            .h_full()
-                                            .on_mouse_down(
-                                                MouseButton::Right,
-                                                move |ev, window, _| {
-                                                    window.show_window_menu(ev.position)
-                                                },
-                                            ),
-                                    )
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        window.listener_for(&state, |state, _, _, _| {
+                            state.should_move = true;
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        window.listener_for(&state, |state, _, _, _| {
+                            state.should_move = false;
+                        }),
+                    )
+                    .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
+                        if state.should_move {
+                            state.should_move = false;
+                            window.start_window_move();
+                        }
+                    }))
+                    .child(
+                        h_flex()
+                            .id("bar")
+                            .h_full()
+                            .justify_between()
+                            .flex_shrink_0()
+                            .flex_1()
+                            .when(!is_web, |this| {
+                                // Drag 命中区只有 Windows 后端会读取；Linux / macOS
+                                // 的拖拽由上面的 on_mouse_down/on_mouse_move 状态机处理。
+                                this.when(is_windows, |this| {
+                                    this.window_control_area(WindowControlArea::Drag)
                                 })
-                        })
-                        .children(self.children),
-                )
-                .child(WindowControls {
-                    on_close_window: self.on_close_window,
-                }),
-        )
+                                .when(window.is_fullscreen(), |this| this.pl_3())
+                                .when(
+                                    is_linux && is_client_decorated,
+                                    |this| {
+                                        this.child(
+                                            div()
+                                                .top_0()
+                                                .left_0()
+                                                .absolute()
+                                                .size_full()
+                                                .h_full()
+                                                .on_mouse_down(
+                                                    MouseButton::Right,
+                                                    move |ev, window, _| {
+                                                        window.show_window_menu(ev.position)
+                                                    },
+                                                ),
+                                        )
+                                    },
+                                )
+                            })
+                            .children(self.children),
+                    )
+                    .child(WindowControls {
+                        on_close_window: self.on_close_window,
+                    }),
+            )
+            .into_any_element()
     }
 }

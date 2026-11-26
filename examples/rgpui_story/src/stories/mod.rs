@@ -10,6 +10,7 @@ pub mod inputs;
 pub mod lists;
 pub mod markdown;
 pub mod menus;
+pub mod platform;
 pub mod rich_text;
 pub mod tables;
 pub mod tabs;
@@ -40,6 +41,7 @@ pub fn registry() -> Vec<(&'static str, Vec<StoryItem>)> {
         ("Markdown 渲染", markdown::stories()),
         ("扩展组件", extended::stories()),
         ("主题", themes::stories()),
+        ("平台契约", platform::stories()),
         ("v1.1.0 新功能", v1_1_features::stories()),
     ]
 }

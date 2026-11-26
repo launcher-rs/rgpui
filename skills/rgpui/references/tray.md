@@ -97,9 +97,14 @@ pub enum TrayIconEvent { LeftClick, RightClick, DoubleClick }   // system/tray.r
 - `App::on_tray_menu_action(impl FnMut(SharedString, &mut App) + 'static)`（`app.rs:2605`）
   —— 回调收到的是菜单项的 `id`。
 
-**面板模式：** `App::set_tray_panel_mode(true)`（`app.rs:2573`）后，点击托盘图标触发
-`LeftClick` 而非弹出菜单；`App::tray_icon_bounds()`（`app.rs:2590`）返回图标屏幕边界，
-用于在其下方定位窗口。
+**面板模式（平台差异）：** `App::set_tray_panel_mode(true)` 在 Linux 映射为 SNI 的
+`ItemIsMenu`，但 Ubuntu/appindicators 主机会忽略该属性、左键始终弹菜单；macOS 未实现。
+`App::tray_icon_bounds()` 在 Linux 恒为 `None`（SNI 协议没有图标坐标 API），
+不能靠它在 Linux 上把窗口定位到托盘图标下方；Windows 也返回 `None`。
+
+**点击事件（Linux）：** Ubuntu/appindicators 主机左键单击弹出菜单、**双击**才触发
+`LeftClick`，右键不会产生 `LeftClick`。跨平台的托盘交互应以 `on_tray_menu_action`
+（菜单项 id）为主，不要依赖 `LeftClick` / `RightClick` 的 Windows/macOS 语义。
 
 ## 隐藏到托盘
 
