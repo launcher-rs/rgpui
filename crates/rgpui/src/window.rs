@@ -2870,6 +2870,9 @@ impl Window {
 
     pub(crate) fn appearance_changed(&mut self, cx: &mut App) {
         self.appearance = self.platform_window.appearance();
+        // 滚动条显示策略跟随系统设置（Linux 的 overlay-scrolling 等），
+        // 主题明暗变化时也顺便重读，避免只能建窗时生效
+        crate::theme::Theme::sync_scrollbar_appearance(cx);
 
         self.appearance_observers
             .clone()

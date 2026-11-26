@@ -548,6 +548,13 @@ impl X11Client {
                     XDPEvent::ReduceMotion(reduce_motion) => {
                         client.with_common(|common| common.reduce_motion = reduce_motion);
                     }
+                    XDPEvent::OverlayScrolling(overlay) => {
+                        client.with_common(|common| common.auto_hide_scrollbars = overlay);
+                        // 复用 appearance 通知通道让已开窗口重读滚动条策略
+                        for window in client.0.borrow_mut().windows.values() {
+                            window.window.notify_appearance_changed();
+                        }
+                    }
                     XDPEvent::CursorTheme(_) | XDPEvent::CursorSize(_) => {
                         // X11 的光标图标在建窗时由 cursor_handle 一次性加载并缓存，
                         // 此前这里空操作导致系统主题/尺寸变更后应用内光标不更新

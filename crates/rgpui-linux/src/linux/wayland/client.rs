@@ -715,6 +715,18 @@ impl WaylandClient {
                             client.common.reduce_motion = reduce_motion;
                         }
                     }
+                    XDPEvent::OverlayScrolling(overlay) => {
+                        if let Some(client) = client.0.upgrade() {
+                            let mut client = client.borrow_mut();
+                            client.common.auto_hide_scrollbars = overlay;
+                            let windows: Vec<_> = client.windows.values().cloned().collect();
+                            drop(client);
+                            // 复用 appearance 通知通道让已开窗口重读滚动条策略
+                            for window in windows {
+                                window.notify_appearance_changed();
+                            }
+                        }
+                    }
                 }
             })
             .map_err(|_| anyhow::anyhow!("注册 XDG 门户事件源失败"))?;

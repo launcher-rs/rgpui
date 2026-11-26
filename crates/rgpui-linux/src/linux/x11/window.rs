@@ -1765,6 +1765,16 @@ impl X11WindowStatePtr {
         }
     }
 
+    /// 只触发 appearance_changed 回调，不改主题明暗。
+    /// 用于滚动条自动隐藏等设置变更时让已开窗口重读。
+    pub fn notify_appearance_changed(&self) {
+        let callback = self.callbacks.borrow_mut().appearance_changed.take();
+        if let Some(mut fun) = callback {
+            fun();
+            self.callbacks.borrow_mut().appearance_changed = Some(fun);
+        }
+    }
+
     pub fn set_button_layout(&self) {
         let callback = self.callbacks.borrow_mut().button_layout_changed.take();
         if let Some(mut fun) = callback {

@@ -21,6 +21,8 @@ pub enum Event {
     ButtonLayout(String),
     /// 系统「减少动态效果」无障碍设置变化
     ReduceMotion(bool),
+    /// GNOME 的 overlay-scrolling（浮层/自动隐藏滚动条）变化
+    OverlayScrolling(bool),
 }
 
 /// XDG 桌面门户事件源
@@ -82,6 +84,36 @@ impl XDPEventSource {
 
                 if let Some(reduce_motion) = read_reduce_motion(&settings).await {
                     sender.send(Event::ReduceMotion(reduce_motion))?;
+                }
+
+                // GNOME 的 overlay-scrolling：true 表示滚动条默认隐藏、滚动时才浮现，
+                // 对应主题的 scrollbar_show = AutoHide。KDE 用另一套键，这里只接 GNOME
+                // 的标准键；其它 DE 保持默认 false（Hover）。
+                if let Ok(overlay) = settings
+                    .read::<bool>("org.gnome.desktop.interface", "overlay-scrolling")
+                    .await
+                {
+                    log::info!("GNOME overlay-scrolling 初值: {overlay}");
+                    sender.send(Event::OverlayScrolling(overlay))?;
+                }
+                if let Ok(mut overlay_changed) = settings
+                    .receive_setting_changed_with_args::<bool>(
+                        "org.gnome.desktop.interface",
+                        "overlay-scrolling",
+                    )
+                    .await
+                {
+                    let sender = sender.clone();
+                    background
+                        .spawn(async move {
+                            while let Some(overlay) = overlay_changed.next().await {
+                                let overlay = overlay?;
+                                log::info!("GNOME overlay-scrolling 变更: {overlay}");
+                                sender.send(Event::OverlayScrolling(overlay))?;
+                            }
+                            anyhow::Ok(())
+                        })
+                        .detach();
                 }
 
                 if let Ok(mut cursor_theme_changed) = settings
