@@ -71,9 +71,12 @@ pub(crate) trait LinuxClient {
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
 
+    /// 能力声明必须与 `screen_capture_sources` 的实际能力一致。默认不宣称支持：
+    /// 真正实现了捕获的后端（目前是 X11）显式覆盖为 `true`，Wayland 与无头后端
+    /// 保持 `false`——否则 UI 会按 `true` 进入取色/截图流程，随后拿到一个 Err。
     #[cfg(feature = "screen-capture")]
     fn is_screen_capture_supported(&self) -> bool {
-        true
+        false
     }
 
     #[cfg(feature = "screen-capture")]

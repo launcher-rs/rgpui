@@ -836,6 +836,13 @@ impl LinuxClient for WaylandClient {
         None
     }
 
+    // 与 X11 对称地如实声明能力：Wayland 的 screen_capture_sources 目前只会返回 Err，
+    // 这里必须返回 false，否则上层（取色器 / 截图 UI）会以为能力可用。
+    #[cfg(feature = "screen-capture")]
+    fn is_screen_capture_supported(&self) -> bool {
+        false
+    }
+
     #[cfg(feature = "screen-capture")]
     fn screen_capture_sources(
         &self,
