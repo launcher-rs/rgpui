@@ -19,13 +19,12 @@ workspace = true
 # Windows 应用清单嵌入。
 default = ["font-kit", "wayland", "x11", "windows-manifest"]
 # 测试支持：启用泄漏检测、proptest 属性测试、假 HTTP 客户端（FakeHttpClient）
-# 与 visual_test（macOS 截图对比测试），并启用 Wayland/X11 与 git2 依赖。
+# 与 visual_test（macOS 截图对比测试），并启用 Wayland/X11 依赖。
 test-support = [
     "leak-detection",
     "wayland",
     "x11",
     "proptest",
-    "dep:git2",
     "dep:postage",
     "dep:futures-concurrency",
 ]
@@ -37,6 +36,9 @@ leak-detection = []
 reqwest = [
     "dep:reqwest",
     "dep:tokio",
+    # rustls-no-provider 要求创建 Client 前安装 crypto provider；provider
+    # 安装逻辑在 tls 模块，故启用 reqwest 时必须一并启用 tls。
+    "tls",
 ]
 # TLS 支持：为 reqwest 客户端启用 rustls 平台证书校验（含系统根证书）。
 tls = [
@@ -279,7 +281,6 @@ bytes.workspace = true
 dunce.workspace = true
 crossbeam-channel.workspace = true
 futures-lite.workspace = true
-git2 = { workspace = true, optional = true }
 globset.workspace = true
 heapless.workspace = true
 http.workspace = true

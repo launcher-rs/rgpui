@@ -40,6 +40,9 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # clippy -D warnings 失败时也要保存已编好的依赖缓存，避免修错后全冷启动
+          cache-on-failure: true
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -72,13 +75,8 @@ jobs:
             libxcb-shape0-dev \
             libxcb-xfixes0-dev
 
-      - name: cargo fmt
-        shell: bash
-        run: |
-          # rgpui-linux 的 Rust 2024 edition 语法在 stable rustfmt 下解析会失败，逐 crate 检查并跳过它
-          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows showcase; do
-            cargo fmt -p "$crate" -- --check
-          done
+      # fmt 是平台无关的源码检查，已移到只跑一次的 hygiene job，不再在
+      # 三平台矩阵里各跑一遍。
 
       - name: cargo clippy
         # `--all-targets` 覆盖 lib / bins / examples / tests / benches：`--lib --bins`
@@ -112,8 +110,9 @@ jobs:
         if: runner.os == 'Linux'
         # webview example 的 wry / rgpui-webview 已设为可选 feature，默认
         # workspace check 不再编它，这里显式开启覆盖 example 本身。
+        # `cargo check -p webview_example --features webview` 已把 rgpui 以
+        # webview feature 编译，单独的 `cargo check -p rgpui --features webview` 冗余。
         run: |
-          cargo check -p rgpui --features webview
           cargo check -p webview_example --features webview
           cargo clippy -p webview_example --features webview -- -D warnings
 
@@ -138,6 +137,9 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # clippy -D warnings 失败时也要保存已编好的依赖缓存，避免修错后全冷启动
+          cache-on-failure: true
 
       - name: cargo check (rgpui-web, wasm)
         run: cargo check -p rgpui-web --target wasm32-unknown-unknown
@@ -152,9 +154,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # clippy -D warnings 失败时也要保存已编好的依赖缓存，避免修错后全冷启动
+          cache-on-failure: true
 
       - name: typos
         uses: crate-ci/typos@v1
+
+      - name: cargo fmt
+        shell: bash
+        # rgpui-linux 的 Rust 2024 edition 语法在 stable rustfmt 下解析会失败，逐 crate 检查并跳过它。
+        # fmt 与平台无关，只需在这里跑一次（原三平台矩阵里各跑一遍属冗余）。
+        run: |
+          for crate in rgpui rgpui-3d rgpui-character rgpui-dom rgpui-macros rgpui-markdown rgpui-platform rgpui-term rgpui-web rgpui-wgpu rgpui-windows showcase; do
+            cargo fmt -p "$crate" -- --check
+          done
 
       - name: cargo machete
         run: |
