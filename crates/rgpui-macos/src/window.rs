@@ -549,6 +549,8 @@ struct MacWindowState {
     should_close_in_progress: bool,
     close_callback: Option<Box<dyn FnOnce()>>,
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
+    /// 红绿灯按钮布局变化回调（进入/退出全屏时按钮位置改变）
+    button_layout_changed_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
     last_key_equivalent: Option<KeyDownEvent>,
     synthetic_drag_counter: usize,
@@ -947,6 +949,7 @@ impl MacWindow {
                 should_close_in_progress: false,
                 close_callback: None,
                 appearance_changed_callback: None,
+                button_layout_changed_callback: None,
                 input_handler: None,
                 last_key_equivalent: None,
                 synthetic_drag_counter: 0,
@@ -1803,6 +1806,10 @@ impl PlatformWindow for MacWindow {
         self.0.lock().appearance_changed_callback = Some(callback);
     }
 
+    fn on_button_layout_changed(&self, callback: Box<dyn FnMut()>) {
+        self.0.lock().button_layout_changed_callback = Some(callback);
+    }
+
     fn tabbed_windows(&self) -> Option<Vec<SystemWindowTab>> {
         unsafe {
             let windows: id = msg_send![self.0.lock().native_window, tabbedWindows];
@@ -1869,7 +1876,7 @@ impl PlatformWindow for MacWindow {
     }
 
     fn gpu_specs(&self) -> Option<rgpui::GpuSpecs> {
-        None
+        Some(self.0.lock().renderer.gpu_specs())
     }
 
     fn update_ime_position(&self, _bounds: Bounds<Pixels>) {
@@ -2558,6 +2565,14 @@ extern "C" fn window_will_enter_fullscreen(this: &Object, _: Sel, _: id) {
     lock.fullscreen_restore_bounds = lock.bounds();
     lock.restore_traffic_light();
 
+    // 红绿灯位置随全屏切换改变，通知订阅者重读 button_layout
+    if let Some(mut callback) = lock.button_layout_changed_callback.take() {
+        drop(lock);
+        callback();
+        window_state.lock().button_layout_changed_callback = Some(callback);
+    }
+    let mut lock = window_state.as_ref().lock();
+
     let min_version = NSOperatingSystemVersion::new(15, 3, 0);
 
     if is_macos_version_at_least(min_version) {
@@ -2585,6 +2600,16 @@ extern "C" fn window_did_exit_fullscreen(this: &Object, _: Sel, _: id) {
     // WINDOW_STATE_IVAR with an Arc<Mutex<MacWindowState>> during window creation.
     let window_state = unsafe { get_window_state(this) };
     window_state.as_ref().lock().move_traffic_light();
+
+    if let Some(mut callback) = window_state
+        .as_ref()
+        .lock()
+        .button_layout_changed_callback
+        .take()
+    {
+        callback();
+        window_state.as_ref().lock().button_layout_changed_callback = Some(callback);
+    }
 }
 
 pub(crate) fn is_macos_version_at_least(version: NSOperatingSystemVersion) -> bool {
