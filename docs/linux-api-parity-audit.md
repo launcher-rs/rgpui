@@ -218,7 +218,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M13 | `window_stack` / `active_window` / `tabbed_windows` 漏掉所有 `NSPanel` 窗口 | `macos/window.rs:1141/1159/1758` | **已修**（需 macOS CI 验证） |
 | M14 | 通知用废弃 `NSUserNotificationCenter`，`unwrap` + 恒 `Ok(())` | `macos/notifications.rs:28-58` | **已修**（需 macOS CI 验证） |
 | M15 | 自启路径用裸可执行文件而非 bundle，plist 未 XML 转义 | `macos/platform.rs:1292-1302`、`auto_launch.rs:27-49` | **已修**：plist 字符串做 XML 转义（需 macOS CI 验证） |
-| M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | **待做**：需 SCStream 窗口源枚举 + 错误通道（需真机） |
+| M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | **部分已修**：流失败记 warn；窗口源枚举仍需 SCWindow + 不同 ContentFilter（需真机） |
 | M17 | `set_text_content_type` 跨线程直接调 AppKit，`CONTENT_TYPES` 按视图指针永久驻留 | `macos/window.rs:1941-1948`、`327-357` | **已修**：切前台执行器 + dealloc_view 清理 CONTENT_TYPES（需 macOS CI 验证） |
 | M18 | `gpu_specs()` 恒 `None`，且 core 文档错写「Mac 和 Windows 上返回 None」（Windows 已实现） | `macos/window.rs:1812-1814`；core `window.rs:6655` | **文档已修**，macOS 侧实现仍待做 |
 | M19 | `selectNextTab:` / `selectPreviousTab:` 覆盖后没调 `super`，原生 tabGroup 高亮不同步 | `macos/window.rs:3218-3236` | **非缺陷**：core 回调已激活下一窗口，调 super 会双重切换；已文档化 |

@@ -318,7 +318,18 @@ extern "C" fn output_video_effect_did_start_for_stream(_this: &Object, _: Sel, _
 
 extern "C" fn output_video_effect_did_stop_for_stream(_this: &Object, _: Sel, _stream: id) {}
 
-extern "C" fn stream_did_stop_with_error(_this: &Object, _: Sel, _stream: id, _error: id) {}
+extern "C" fn stream_did_stop_with_error(_this: &Object, _: Sel, _stream: id, error: id) {
+    // 流中途失败（授权被撤、显示器断开等）此前完全静默，帧直接停住且无从排查
+    unsafe {
+        let desc: id = msg_send![error, localizedDescription];
+        let msg = if desc.is_null() {
+            "未知错误".to_string()
+        } else {
+            NSStringExt::to_str(&desc)
+        };
+        log::warn!("屏幕捕获流已停止: {msg}");
+    }
+}
 
 extern "C" fn stream_did_output_sample_buffer_of_type(
     this: &Object,
