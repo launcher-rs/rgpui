@@ -527,41 +527,43 @@ impl Drop for WaylandClient {
 
 const WL_DATA_DEVICE_MANAGER_VERSION: u32 = 3;
 
-fn wl_seat_version(version: u32) -> u32 {
+/// 合成器报出的版本低于我们依赖的最低版本时，跳过该 global 而不是 panic：
+/// 老合成器（以及某些远程/嵌入式会话）仍可提供基本窗口能力，不该让整个应用崩掉。
+/// 返回 `None` 表示调用方应跳过这个 global。
+fn wl_seat_version(version: u32) -> Option<u32> {
     // We rely on the wl_pointer.frame event
     const WL_SEAT_MIN_VERSION: u32 = 5;
     const WL_SEAT_MAX_VERSION: u32 = 9;
 
     if version < WL_SEAT_MIN_VERSION {
-        panic!(
-            "wl_seat below required version: {} < {}",
-            version, WL_SEAT_MIN_VERSION
-        );
+        log::warn!("wl_seat 版本 {version} 低于所需的 {WL_SEAT_MIN_VERSION}，跳过该 seat");
+        return None;
     }
 
-    version.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION)
+    Some(version.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION))
 }
 
-fn wl_output_version(version: u32) -> u32 {
+/// 同 [`wl_seat_version`]：版本不足时返回 `None`，由调用方跳过该输出。
+fn wl_output_version(version: u32) -> Option<u32> {
     const WL_OUTPUT_MIN_VERSION: u32 = 2;
     const WL_OUTPUT_MAX_VERSION: u32 = 4;
 
     if version < WL_OUTPUT_MIN_VERSION {
-        panic!(
-            "wl_output below required version: {} < {}",
-            version, WL_OUTPUT_MIN_VERSION
-        );
+        log::warn!("wl_output 版本 {version} 低于所需的 {WL_OUTPUT_MIN_VERSION}，跳过该输出");
+        return None;
     }
 
-    version.clamp(WL_OUTPUT_MIN_VERSION, WL_OUTPUT_MAX_VERSION)
+    Some(version.clamp(WL_OUTPUT_MIN_VERSION, WL_OUTPUT_MAX_VERSION))
 }
 
 impl WaylandClient {
-    pub(crate) fn new() -> Self {
+    /// 连接失败、缺少 `wl_seat` 或事件源注册失败时返回 `Err`，由 `current_platform`
+    /// 回退到其它后端；不再让编译期配置或会话异常变成启动期 panic。
+    pub(crate) fn new() -> anyhow::Result<Self> {
         let startup_activation_token = take_startup_activation_token_from_environment();
-        let conn = Connection::connect_to_env().unwrap();
+        let conn = Connection::connect_to_env()?;
 
-        let (globals, event_queue) = registry_queue_init::<WaylandClientStatePtr>(&conn).unwrap();
+        let (globals, event_queue) = registry_queue_init::<WaylandClientStatePtr>(&conn)?;
         let qh = event_queue.handle();
 
         let mut seat: Option<wl_seat::WlSeat> = None;
@@ -573,49 +575,51 @@ impl WaylandClient {
             for global in list {
                 match &global.interface[..] {
                     "wl_seat" => {
-                        seat = Some(globals.registry().bind::<wl_seat::WlSeat, _, _>(
-                            global.name,
-                            wl_seat_version(global.version),
-                            &qh,
-                            (),
-                        ));
+                        if let Some(version) = wl_seat_version(global.version) {
+                            seat = Some(globals.registry().bind::<wl_seat::WlSeat, _, _>(
+                                global.name,
+                                version,
+                                &qh,
+                                (),
+                            ));
+                        }
                     }
                     "wl_output" => {
-                        let output = globals.registry().bind::<wl_output::WlOutput, _, _>(
-                            global.name,
-                            wl_output_version(global.version),
-                            &qh,
-                            (),
-                        );
-                        in_progress_outputs.insert(output.id(), InProgressOutput::default());
-                        wl_outputs.insert(output.id(), output);
+                        if let Some(version) = wl_output_version(global.version) {
+                            let output = globals.registry().bind::<wl_output::WlOutput, _, _>(
+                                global.name,
+                                version,
+                                &qh,
+                                (),
+                            );
+                            in_progress_outputs.insert(output.id(), InProgressOutput::default());
+                            wl_outputs.insert(output.id(), output);
+                        }
                     }
                     _ => {}
                 }
             }
         });
 
-        let event_loop = EventLoop::<WaylandClientStatePtr>::try_new().unwrap();
+        let event_loop = EventLoop::<WaylandClientStatePtr>::try_new()?;
 
         let (mut common, main_receiver, power_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
-        handle
-            .insert_source(main_receiver, {
-                let handle = handle.clone();
-                move |event, _, _: &mut WaylandClientStatePtr| {
-                    if let calloop::channel::Event::Msg(runnable) = event {
-                        handle.insert_idle(|_| {
-                            let location = runnable.metadata().location;
-                            let spawned = runnable.metadata().spawned;
-                            profiler::update_running_task(spawned, location);
-                            runnable.run();
-                            profiler::save_task_timing();
-                        });
-                    }
+        handle.insert_source(main_receiver, {
+            let handle = handle.clone();
+            move |event, _, _: &mut WaylandClientStatePtr| {
+                if let calloop::channel::Event::Msg(runnable) = event {
+                    handle.insert_idle(|_| {
+                        let location = runnable.metadata().location;
+                        let spawned = runnable.metadata().spawned;
+                        profiler::update_running_task(spawned, location);
+                        runnable.run();
+                        profiler::save_task_timing();
+                    });
                 }
-            })
-            .unwrap();
+            }
+        })?;
 
         handle
             .insert_source(
@@ -630,7 +634,7 @@ impl WaylandClient {
                     }
                 },
             )
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("注册电源事件源失败"))?;
 
         if let Some(tray_event_source) = common.take_tray_event_source() {
             handle
@@ -640,13 +644,13 @@ impl WaylandClient {
                         dispatch_tray_event(event, &mut |f| f(&mut state.borrow_mut().common));
                     }
                 })
-                .unwrap();
+                .map_err(|_| anyhow::anyhow!("注册托盘事件源失败"))?;
         }
 
         let compositor_gpu = detect_compositor_gpu();
         let gpu_context = Rc::new(RefCell::new(None));
 
-        let seat = seat.unwrap();
+        let seat = seat.ok_or_else(|| anyhow::anyhow!("合成器没有提供 wl_seat"))?;
         let globals = Globals::new(
             globals,
             common.foreground_executor.clone(),
@@ -713,7 +717,7 @@ impl WaylandClient {
                     }
                 }
             })
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("注册 XDG 门户事件源失败"))?;
 
         let state = Rc::new(RefCell::new(WaylandClientState {
             serial_tracker: SerialTracker::new(),
@@ -788,11 +792,9 @@ impl WaylandClient {
             event_loop: Some(event_loop),
         }));
 
-        WaylandSource::new(conn, event_queue)
-            .insert(handle)
-            .unwrap();
+        WaylandSource::new(conn, event_queue).insert(handle)?;
 
-        Self(state)
+        Ok(Self(state))
     }
 }
 
@@ -1223,26 +1225,22 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
                     if let Some(wl_keyboard) = state.wl_keyboard.take() {
                         wl_keyboard.release();
                     }
-                    state.wl_seat.release();
-                    state.wl_seat = registry.bind::<wl_seat::WlSeat, _, _>(
-                        name,
-                        wl_seat_version(version),
-                        qh,
-                        (),
-                    );
+                    if let Some(version) = wl_seat_version(version) {
+                        state.wl_seat.release();
+                        state.wl_seat =
+                            registry.bind::<wl_seat::WlSeat, _, _>(name, version, qh, ());
+                    }
                 }
                 "wl_output" => {
-                    let output = registry.bind::<wl_output::WlOutput, _, _>(
-                        name,
-                        wl_output_version(version),
-                        qh,
-                        (),
-                    );
+                    if let Some(version) = wl_output_version(version) {
+                        let output =
+                            registry.bind::<wl_output::WlOutput, _, _>(name, version, qh, ());
 
-                    state
-                        .in_progress_outputs
-                        .insert(output.id(), InProgressOutput::default());
-                    state.wl_outputs.insert(output.id(), output);
+                        state
+                            .in_progress_outputs
+                            .insert(output.id(), InProgressOutput::default());
+                        state.wl_outputs.insert(output.id(), output);
+                    }
                 }
                 _ => {}
             },

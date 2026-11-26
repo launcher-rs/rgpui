@@ -66,7 +66,10 @@ pub fn current_platform(headless: bool) -> Rc<dyn rgpui::Platform> {
 
     #[cfg(feature = "wayland")]
     if compositor == "Wayland" {
-        return make_platform(WaylandClient::new());
+        match WaylandClient::new() {
+            Ok(client) => return make_platform(client),
+            Err(error) => log::warn!("Wayland 后端初始化失败，尝试其它后端：{error:#}"),
+        }
     }
 
     // X11 是首选（会话就是 X11），也是 Wayland 后端不可用时的兜底——多数
