@@ -2126,7 +2126,9 @@ impl PlatformWindow for WaylandWindow {
             }
             None => {
                 if matches!(decorations, WindowDecorations::Server) {
-                    log::info!(
+                    // 默认日志级别是 error，info 对最终用户不可见；装饰模式回退会
+                    // 直接改变窗口外观（自绘标题栏 vs 系统框架），必须能看见。
+                    log::warn!(
                         "Server-side decorations requested, but the Wayland server does not support them. Falling back to client-side decorations."
                     );
                 }

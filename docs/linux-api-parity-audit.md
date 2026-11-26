@@ -183,7 +183,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | 4 | Wayland 启动期硬 panic | `WaylandClient::new()` 改返回 `anyhow::Result`：连接/绑定/事件源注册失败用 `?` 或显式错误；`wl_seat_version` / `wl_output_version` 版本不足返回 `None` 跳过 global 而非 panic；`current_platform` 收到 Err 后回退 X11 / headless | workspace clippy + guards + Wayland 会话示例启动 | **已完成** |
 | 5 | URL scheme 回调不派发 | 从 argv 提取 scheme URL（跳过 argv[0]，排除开关/路径/盘符），注册回调时重放；取回调出借用后再调用避免 RefCell 重入；补纯函数单测；core trait 文档标注各平台派发方式 | `startup_urls_only_accepts_scheme_urls` 单测 + clippy + guards | **已完成** |
 | 6 | `is_movable` / `is_resizable` / `is_minimizable` 被丢弃 | X11 把三个标志写进 Motif functions 位（关闭位恒开），并覆盖 `window_controls()`；Wayland 把应用标志与合成器上报能力取交集；`WindowOptions` 文档标注各平台落地程度；补 4 条 Motif 单测。min/max size hints 仍待做（X11 上 `is_resizable: false` 时还应写 WM_SIZE_HINTS 的 min=max=初始尺寸） | 4 条 `motif` 单测 + workspace clippy + guards | **已完成（部分）** |
-| 7 | 装饰模式双向静默回退 | `window_decorations()` 暴露协商后的真实值；回退日志从 info 提到 warn；同步包装层文档 | Wayland/X11 两种组合的窗口外观验证 | 待开始 |
+| 7 | 装饰模式双向静默回退 | 两处回退日志从 `info` 提到 `warn`（默认级别可见）；`Window::request_decorations` / `window_decorations` / `WindowOptions::window_decorations` 文档明确「请求≠实际、回退后查实际值」；复核确认两端 `window_decorations()` 本就返回协商值 | workspace clippy + guards | **已完成** |
 | … | （其余见第二节） | | | |
 
 ---

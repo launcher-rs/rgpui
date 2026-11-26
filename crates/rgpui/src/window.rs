@@ -2490,7 +2490,11 @@ impl Window {
         self.platform_window.is_maximized()
     }
 
-    /// 请求特定的窗口装饰（Wayland）
+    /// 请求使用客户端还是服务端装饰（Wayland 与 X11）。
+    ///
+    /// 请求可能被合成器/窗口管理器回退：Wayland 无 xdg-decoration 支持时服务端装饰
+    /// 会变成客户端装饰，X11 无合成器时反过来。回退会记 `warn` 日志；要确认实际
+    /// 生效值请在请求后调用 [`Self::window_decorations`]，不要假设请求一定被接受。
     pub fn request_decorations(&self, decorations: WindowDecorations) {
         self.platform_window.request_decorations(decorations);
     }
@@ -2957,7 +2961,10 @@ impl Window {
         self.client_inset
     }
 
-    /// 返回标题栏窗口控件是否需要由应用程序渲染（Wayland 和 X11）
+    /// 返回标题栏窗口控件是否需要由应用程序渲染（Wayland 和 X11）。
+    ///
+    /// 返回的是**协商后的实际值**，可能不同于 `WindowOptions::window_decorations`
+    /// 的请求值（见 [`Self::request_decorations`]）；自绘标题栏应据此决定是否绘制。
     pub fn window_decorations(&self) -> Decorations {
         self.platform_window.window_decorations()
     }

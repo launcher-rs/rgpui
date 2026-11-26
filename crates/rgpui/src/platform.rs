@@ -2242,8 +2242,11 @@ pub struct WindowOptions {
     /// 窗口最小尺寸
     pub window_min_size: Option<Size<Pixels>>,
 
-    /// 使用客户端还是服务端装饰。仅 Wayland。
-    /// 注意此设置可能被忽略。
+    /// 使用客户端还是服务端装饰（Wayland 与 X11）。
+    ///
+    /// 这只是**请求**：Wayland 无 xdg-decoration 支持时服务端装饰会回退为客户端
+    /// 装饰，X11 无合成器时客户端装饰会回退为服务端装饰。回退记 `warn` 日志，
+    /// 实际生效值用 `Window::window_decorations()` 查询。
     pub window_decorations: Option<WindowDecorations>,
 
     /// 图标图片（仅 X11）

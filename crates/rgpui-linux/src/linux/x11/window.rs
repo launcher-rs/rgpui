@@ -2499,7 +2499,8 @@ impl PlatformWindow for X11Window {
         if matches!(decorations, rgpui::WindowDecorations::Client)
             && !state.client_side_decorations_supported
         {
-            log::info!(
+            // 默认日志级别是 error，info 对最终用户不可见；回退会改变窗口外观
+            log::warn!(
                 "x11: no compositor present, falling back to server-side window decorations"
             );
             decorations = rgpui::WindowDecorations::Server;
