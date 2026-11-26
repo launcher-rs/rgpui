@@ -1709,6 +1709,16 @@ impl PlatformWindow for MacWindow {
         }
     }
 
+    /// 请求用户注意：macOS 用 NSApp.requestUserAttention 弹跳 Dock 图标。
+    /// 此前该方法在 macOS 走 trait 默认空实现，调用方以为已提醒但什么都没发生。
+    fn request_attention(&self) {
+        unsafe {
+            let app: id = msg_send![APP_CLASS, sharedApplication];
+            // NSCriticalAttentionRequestType = 2；用有限次请求避免一直弹跳
+            let _: () = msg_send![app, requestUserAttention: 2u64];
+        }
+    }
+
     fn minimize(&self) {
         let window = self.0.lock().native_window;
         unsafe {

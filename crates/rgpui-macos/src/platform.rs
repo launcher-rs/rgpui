@@ -50,7 +50,7 @@ use rgpui::{
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
     PlatformWindow, PowerSaveBlocker, PowerSaveBlockerKind, Result, SharedString, SystemMenuType,
     SystemPowerEvent, Task, ThermalState, TrayIconEvent, TrayMenuItem, WindowAppearance,
-    WindowKind, WindowParams, popup::PopupNotSupportedError,
+    WindowButton, WindowButtonLayout, WindowKind, WindowParams, popup::PopupNotSupportedError,
 };
 use semver::Version;
 use std::{
@@ -1036,6 +1036,19 @@ impl Platform for MacPlatform {
 
     fn get_menus(&self) -> Option<Vec<OwnedMenu>> {
         self.0.lock().menus.clone()
+    }
+
+    /// macOS 的红绿灯按钮固定在标题栏左侧（关闭 / 最小化 / 缩放）。
+    /// 此前走 trait 默认返回 None，调用方误以为平台不提供布局信息。
+    fn button_layout(&self) -> Option<WindowButtonLayout> {
+        let mut left = [None; rgpui::MAX_BUTTONS_PER_SIDE];
+        left[0] = Some(WindowButton::Close);
+        left[1] = Some(WindowButton::Minimize);
+        left[2] = Some(WindowButton::Maximize);
+        Some(WindowButtonLayout {
+            left,
+            right: [None; rgpui::MAX_BUTTONS_PER_SIDE],
+        })
     }
 
     fn set_dock_menu(&self, menu: Vec<MenuItem>, keymap: &Keymap) {
