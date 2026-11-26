@@ -42,20 +42,24 @@ fn invariant<T>(value: Option<T>, message: &str) -> T {
     }
 }
 
-/// 计算输入框实际使用的行高：外部覆盖优先，否则沿用原先的按字号推导并取整逻辑。
+/// 计算输入框实际使用的行高：外部覆盖优先，否则沿用原先的按字号推导逻辑。
+///
+/// 结果统一对齐到设备像素网格（`Window::pixel_snap`），与 `TextLayout`（styled text）
+/// 的行高处理保持完全一致。两者若差零点几像素，`paint_line` 计算出的基线
+/// `(line_height - ascent - descent) / 2 + ascent` 就会偏移，字形光栅化后表现为
+/// 文本整体上下移动 1 个像素——外部排版器把静态文字替换成 Input 时肉眼可见的“下沉”。
 fn effective_line_height(state: &InputState, window: &Window) -> Pixels {
-    if let Some(line_height) = state.line_height_override {
-        return line_height;
-    }
     let text_style = window.text_style();
-    if let Some(font_size) = state.font_size_override {
-        text_style
-            .line_height
-            .to_pixels(crate::AbsoluteLength::Pixels(font_size), window.rem_size())
-            .round()
-    } else {
-        window.line_height()
-    }
+    let raw = match state.line_height_override {
+        Some(line_height) => line_height,
+        None => match state.font_size_override {
+            Some(font_size) => text_style
+                .line_height
+                .to_pixels(crate::AbsoluteLength::Pixels(font_size), window.rem_size()),
+            None => window.line_height(),
+        },
+    };
+    window.pixel_snap(raw)
 }
 
 /// 将文本装饰范围限制在可见范围内并合并样式。

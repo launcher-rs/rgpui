@@ -4176,6 +4176,8 @@ struct ScrollHandleState {
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
     active_item: Option<ScrollActiveItem>,
+    /// 外部显式请求的偏移量：在下一次 prepaint 中落地，保证布局与绘制同步更新。
+    requested_offset: Option<Point<Pixels>>,
     /// 共享状态版本号（Retained P1b）：语义写入递增；每帧重建子边界等刷新不递增。
     version: crate::fast::dependencies::StateVersion,
 }
@@ -4298,6 +4300,12 @@ impl ScrollHandle {
     fn scroll_to_active_item(&self) {
         let mut state = self.0.borrow_mut();
 
+        // 外部显式请求的偏移先落地（键盘跟随光标、程序化翻页）。
+        // 放在 prepaint 里做，绘制偏移与布局偏移才会在同一帧更新。
+        if let Some(requested) = state.requested_offset.take() {
+            *state.offset.borrow_mut() = requested;
+        }
+
         let Some(active_item) = state.active_item else {
             return;
         };
@@ -4352,11 +4360,25 @@ impl ScrollHandle {
 
     /// 显式设置偏移量。偏移量是父容器左上角到第一个子元素左上角的距离。
     /// 随着向下滚动，偏移量变得更负。
+    ///
+    /// 注意：这里只写共享状态，保留渲染下滚动容器不会重新 prepaint，
+    /// 视觉上可能不更新。需要「立刻滚过去」时用 [`Self::request_offset`]。
     pub fn set_offset(&self, mut position: Point<Pixels>) {
         let state = self.0.borrow();
         // 相同值写入不递增：调用方常在每帧同步偏移量，无变化即无过期。
         state.version.bump_if(*state.offset.borrow() != position);
         *state.offset.borrow_mut() = position;
+    }
+
+    /// 请求在下一次 prepaint 时把偏移量设置为给定值。
+    ///
+    /// 与 [`Self::set_offset`] 的区别：请求会在滚动容器 prepaint 阶段落地，
+    /// 于是「布局偏移」和「绘制偏移」在同一帧一起更新，保留渲染下也能立刻看到结果
+    /// （键盘输入跟随光标、程序化翻页等场景需要这个语义）。
+    pub fn request_offset(&self, position: Point<Pixels>) {
+        let mut state = self.0.borrow_mut();
+        state.version.bump();
+        state.requested_offset = Some(position);
     }
 
     /// 获取逻辑滚动顶部，基于子元素索引和像素偏移量。
@@ -4584,6 +4606,26 @@ mod tests {
         // prepaint 应用待定滚动是意图的落实，不另递增。
         handle.scroll_to_active_item();
         assert_eq!(handle.version().get(), baseline + 2);
+    }
+
+    /// `request_offset` 只登记意图，偏移量在 prepaint 阶段才落地；
+    /// 这样保留渲染下布局偏移与绘制偏移会一起更新。
+    #[test]
+    fn scroll_handle_request_offset_applies_during_prepaint() {
+        let handle = ScrollHandle::new();
+        let baseline = handle.version().get();
+
+        handle.request_offset(point(px(0.), px(-120.)));
+        assert_eq!(handle.version().get(), baseline + 1);
+        assert_eq!(handle.offset().y, px(0.), "请求阶段不应直接改偏移");
+
+        handle.scroll_to_active_item();
+        assert_eq!(handle.offset().y, px(-120.));
+
+        // 请求是一次性的：再次应用不会重复生效。
+        handle.set_offset(Point::default());
+        handle.scroll_to_active_item();
+        assert_eq!(handle.offset().y, px(0.));
     }
 
     fn setup_tooltip_owner_test(
