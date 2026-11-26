@@ -1249,8 +1249,12 @@ impl Platform for MacPlatform {
 
     /// 请求权限：仅辅助功能有系统弹窗，屏幕录制/输入监控由 TCC 在首次使用时自动询问
     fn request_permission(&self, kind: PermissionType) {
-        if matches!(kind, PermissionType::Accessibility) {
-            MacPermissions::request_accessibility_permission()
+        match kind {
+            PermissionType::Accessibility => MacPermissions::request_accessibility_permission(),
+            PermissionType::InputMonitoring => {
+                MacPermissions::request_input_monitoring_permission()
+            }
+            _ => {}
         }
     }
 

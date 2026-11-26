@@ -57,10 +57,28 @@ impl MacPermissions {
         PermissionStatus::Unavailable
     }
 
-    /// 检查输入监控权限
+    /// 检查输入监控权限。
+    /// macOS 的输入监控（监听其它应用的按键）是独立的 TCC 类别，
+    /// 不能借辅助功能权限代替 —— 此前两者被混为一谈，UI 会误报已授权。
     fn check_input_monitoring_permission(&self) -> PermissionStatus {
-        // 输入监控权限通常与辅助功能权限相同
-        self.check_accessibility_permission()
+        #[cfg(target_os = "macos")]
+        {
+            if input_monitoring::CGPreflightListenEventAccess() {
+                PermissionStatus::Granted
+            } else {
+                PermissionStatus::Denied
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        PermissionStatus::Unavailable
+    }
+
+    /// 请求输入监控权限（弹出系统 TCC 授权框）
+    pub fn request_input_monitoring_permission() {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            input_monitoring::CGRequestListenEventAccess();
+        }
     }
 
     /// 请求辅助功能权限
@@ -102,5 +120,14 @@ mod screen_capture {
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
         pub fn CGPreflightScreenCaptureAccess() -> bool;
+    }
+}
+
+// 输入监控权限 API 绑定（独立于辅助功能）
+mod input_monitoring {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        pub fn CGPreflightListenEventAccess() -> bool;
+        pub fn CGRequestListenEventAccess() -> bool;
     }
 }
