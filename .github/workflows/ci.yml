@@ -89,12 +89,10 @@ jobs:
       - name: cargo check
         run: cargo check --workspace
 
-      - name: cargo check (examples)
-        run: cargo check --workspace --examples
-
-      - name: cargo check (examples workspace)
-        working-directory: examples
-        run: cargo check --workspace
+      # 说明：`--examples` 只覆盖 4 个 rgpui-3d 示例目标，已被上面的 clippy
+      # `--all-targets` 覆盖；旧的 `working-directory: examples` 步骤是 examples
+      # 独立 workspace 时代的遗留（examples/ 下无 Cargo.toml，命令与上面逐字节等价），
+      # 均已删除。
 
       - name: cargo check (showcase all features)
         # showcase 里带 required-features 的 bin（charts/effects/qr-code/
@@ -106,19 +104,25 @@ jobs:
         #（macOS/Windows 的 webview 依赖各平台 SDK，不在 CI 里装）。
         # 注意别加 scap/screen-capture：需要平台屏幕捕获后端，CI 容器不具备，
         # 该 feature 由本地验证覆盖（见 AGENTS.md「跨平台注意」）。
-        run: |
-          cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml,ribbon,viewport
-          # 多语言语法高亮包（每个语言一个 feature，纯 C 解析器，三平台可编）
-          cargo check -p rgpui --features tree-sitter-javascript,tree-sitter-typescript,tree-sitter-python,tree-sitter-bash,tree-sitter-go,tree-sitter-c,tree-sitter-cpp,tree-sitter-c-sharp,tree-sitter-java,tree-sitter-ruby,tree-sitter-php,tree-sitter-css,tree-sitter-html,tree-sitter-yaml
+        # 合并为一条：避免 rgpui 以两套 feature 集合各编译一次（依赖相同，
+        # 只有 rgpui 自身指纹不同）。各 feature 仍全部覆盖。
+        run: cargo check -p rgpui --features editor,tokio,charts,effects,qr-code,dom-backend,tree-sitter,tree-sitter-json,tree-sitter-toml,ribbon,viewport,reqwest,tls,tree-sitter-javascript,tree-sitter-typescript,tree-sitter-python,tree-sitter-bash,tree-sitter-go,tree-sitter-c,tree-sitter-cpp,tree-sitter-c-sharp,tree-sitter-java,tree-sitter-ruby,tree-sitter-php,tree-sitter-css,tree-sitter-html,tree-sitter-yaml
 
       - name: cargo check (webview)
         if: runner.os == 'Linux'
-        run: cargo check -p rgpui --features webview
+        # webview example 的 wry / rgpui-webview 已设为可选 feature，默认
+        # workspace check 不再编它，这里显式开启覆盖 example 本身。
+        run: |
+          cargo check -p rgpui --features webview
+          cargo check -p webview_example --features webview
+          cargo clippy -p webview_example --features webview -- -D warnings
 
-      - name: cargo test (rgpui-dom)
-        run: cargo test -p rgpui-dom
+      # `cargo test -p rgpui-dom` 是 `cargo test --workspace` 的真子集，已删除。
 
       - name: cargo test
+        # 示例 bin 已在清单里对无真实测试的目标设 `test = false`，这里只为
+        # 5 个含 #[cfg(test)] 的 bin 生成测试程序，不再为 70+ 个空 harness
+        # 逐个编译链接。这 5 个 bin 的测试仍由本命令正常执行。
         run: cargo test --workspace
 
   # Web/WASM 独立 job：rgpui-web 是 `#![cfg(target_family = "wasm")]`，
