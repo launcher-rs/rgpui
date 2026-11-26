@@ -346,6 +346,37 @@ impl LinuxCommon {
     }
 }
 
+/// 从命令行参数里挑出桌面环境通过 URL scheme 传入的 URL。
+///
+/// 注册的桌面入口用 `Exec=... %u`，桌面环境会把完整 URL（如 `myapp://open?x=1`）
+/// 作为**单个**参数传给新启动的进程。这里只接受「scheme:」形式的参数，避免把
+/// `--flag`、普通文件路径或 Windows 盘符误判成 URL。scheme 至少需要两个字符。
+fn urls_from_args<I, S>(args: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    args.into_iter()
+        .filter_map(|arg| {
+            let url = arg.as_ref();
+            let colon = url.find(':')?;
+            let scheme = &url[..colon];
+            let valid_scheme = scheme.len() >= 2
+                && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+            // 绝对路径与点开头的相对路径不是 URL
+            (valid_scheme && !url.starts_with(['/', '.'])).then(|| url.to_string())
+        })
+        .collect()
+}
+
+/// 本次启动由桌面环境传入的 URL（跳过 argv[0]）。
+fn startup_urls() -> Vec<String> {
+    urls_from_args(env::args().skip(1))
+}
+
 pub(crate) struct LinuxPlatform<P> {
     pub(crate) inner: P,
     pub(crate) notifications: LinuxNotifications,
@@ -594,8 +625,20 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>) {
+        let urls = startup_urls();
         self.inner
             .with_common(|common| common.callbacks.open_urls = Some(callback));
+        if !urls.is_empty() {
+            // 回调可能在里面访问平台状态（开窗、读文件等），必须先把回调从
+            // with_common 的借用里取出来再调用，避免 RefCell 重入 panic。
+            let mut callback = self
+                .inner
+                .with_common(|common| common.callbacks.open_urls.take())
+                .unwrap_or_else(|| Box::new(|_| {}));
+            callback(urls);
+            self.inner
+                .with_common(|common| common.callbacks.open_urls = Some(callback));
+        }
     }
 
     fn prompt_for_paths(
@@ -1523,6 +1566,26 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<rgpui_wgpu::Com
 mod tests {
     use super::*;
     use rgpui::{Point, px};
+
+    /// scheme URL 抽取：只认合法 scheme，排除开关、路径与盘符样式的参数。
+    #[test]
+    fn startup_urls_only_accepts_scheme_urls() {
+        let args = [
+            "/usr/bin/myapp",
+            "--help",
+            "myapp://open?doc=1",
+            "mailto:user@example.com",
+            "/tmp/report.txt",
+            "./relative.txt",
+            "C:\\Users\\x",
+            "1bad://x",
+            "my_app://x",
+        ];
+        assert_eq!(
+            urls_from_args(args),
+            vec!["myapp://open?doc=1", "mailto:user@example.com"]
+        );
+    }
 
     #[test]
     fn test_is_within_click_distance() {

@@ -66,7 +66,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 2 | `current_platform()` 按 feature 生成匹配分支，兜底 `unreachable!()` | `crates/rgpui-linux/src/linux.rs:58-83` | `rgpui` 与 `rgpui-linux` 的 wayland/x11 feature 不一致时启动直接 panic | **已修复**（见下） |
 | 3 | Wayland 宣称支持屏幕捕获，实际 `screen_capture_sources()` 直接返回「not yet implemented」 | `crates/rgpui-linux/src/linux/platform.rs:75-77`；`wayland/client.rs:838-855` | `App::is_screen_capture_supported()` 暴露给 UI 为 true，点击后列表空/报错 | **已修复**（见下） |
 | 4 | Wayland 启动期多处硬 `unwrap!` / 低版本 `panic!` | `wayland/client.rs:649`、`562/564`、`530-557` | 无 `wl_seat`、老合成器、连接失败时直接崩溃，不回退其它后端或 headless | **已修复**（见下） |
-| 5 | `on_open_urls` / `on_reopen` 回调在 Linux 只存不派发 | `crates/rgpui-linux/src/linux/platform.rs:593-596`、`753-756`；对照 macOS `platform.rs:1471-1492`、`971+1446` | 注册 URL scheme 返回 `Ok`，但以该 scheme 启动应用时回调永不触发；Dock 重开事件同理 | 已核实（全局无派发点） |
+| 5 | `on_open_urls` 回调在 Linux 只存不派发 | `crates/rgpui-linux/src/linux/platform.rs:593-596`；对照 macOS `platform.rs:1471-1492` | 注册 URL scheme 返回 `Ok`，但以该 scheme 启动应用时回调永不触发 | **已修复**（见下）。注：`on_reopen` 经复核**不是缺陷**——`App::on_reopen` rustdoc 已限定 macOS，Linux/Windows 不派发符合契约 |
 | 6 | `WindowOptions::is_movable` / `is_resizable` / `is_minimizable` 在 Linux 建窗时从不读取 | 定义 `platform.rs:2210-2217`；核心转发 `window.rs:1522-1526`、`2107-2108`；X11 `window.rs:601/731/961/976/1037/1144`、Wayland `window.rs:285/538/746` 均未读；对照 Windows `rgpui-windows/src/window.rs:508-521` 真设 WS 位 | 设 `is_minimizable: false` 的窗口在 Linux 仍显示并响应最小化/最大化按钮，直接违反应用意图；`is_movable: false` 完全无效 | 已核实 |
 | 7 | 装饰模式双向静默回退：Wayland `Server→Client`、X11 `Client→Server` | `wayland/window.rs:2118-2126`（只 `log::info!`）；`x11/window.rs:2440-2447`；`window_decorations()` 在 X11 恒 `Server`（`:2364-2367`） | 这正是 RuTerm 踩坑的第二层根因：请求与实际生效不一致，调用方查不到真实值；X11 无合成器时「原生框架 + 自绘标题栏」重复 | 已核实 |
 | 8 | README 虚报「媒体键、生物识别」支持，对应 API 已在 1.5.0 删除 | `readme.md:85`；`CHANGELOG.md:463-466` | 明面上的功能虚报，Linux 读者会去找根本不存在的接口 | 已核实 |
@@ -181,7 +181,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | 2 | `current_platform()` `unreachable!` | 移除 `unreachable!` 与 X11 `unwrap()`：Wayland 会话用 Wayland 后端，其余情况尝试 X11（含 XWayland 兜底），最后落到无头后端并记 warn；抽出泛型 `make_platform` 消除三处重复构造 | 四种 feature 组合（默认 / x11-only / wayland-only / 无后端）编译 + workspace clippy + guards | **已完成** |
 | 3 | Wayland 屏幕撒谎 | `LinuxClient` 默认改为 `false`，Wayland 显式覆盖 `false`（与 X11 的 `true` 对称）；headless 也不再虚报 | 默认 + screen-capture / x11 + screen-capture 编译 + clippy + guards | **已完成** |
 | 4 | Wayland 启动期硬 panic | `WaylandClient::new()` 改返回 `anyhow::Result`：连接/绑定/事件源注册失败用 `?` 或显式错误；`wl_seat_version` / `wl_output_version` 版本不足返回 `None` 跳过 global 而非 panic；`current_platform` 收到 Err 后回退 X11 / headless | workspace clippy + guards + Wayland 会话示例启动 | **已完成** |
-| 5 | URL scheme / 重开回调不派发 | Linux 启动路径解析 argv 并调用 `callbacks.open_urls`；桌面入口激活补 `on_reopen` | 带 scheme 启动示例 + 测试 | 待开始 |
+| 5 | URL scheme 回调不派发 | 从 argv 提取 scheme URL（跳过 argv[0]，排除开关/路径/盘符），注册回调时重放；取回调出借用后再调用避免 RefCell 重入；补纯函数单测；core trait 文档标注各平台派发方式 | `startup_urls_only_accepts_scheme_urls` 单测 + clippy + guards | **已完成** |
 | 6 | `is_movable` / `is_resizable` / `is_minimizable` 被丢弃 | X11 用 `_MOTIF_WM_HINTS` functions 位 + min/max size hints 落地；`window_controls()` 反映真实值；Wayland 文档化尽力而为 | 建窗后读属性 + 按钮可见性验证 | 待开始 |
 | 7 | 装饰模式双向静默回退 | `window_decorations()` 暴露协商后的真实值；回退日志从 info 提到 warn；同步包装层文档 | Wayland/X11 两种组合的窗口外观验证 | 待开始 |
 | … | （其余见第二节） | | | |

@@ -378,6 +378,10 @@ pub trait Platform: 'static {
     /// 在系统默认浏览器中打开 URL。
     fn open_url(&self, url: &str);
     /// 注册 URL scheme 回调，当应用通过自定义 URL scheme 打开时触发。
+    ///
+    /// 各平台从各自的系统入口派发：macOS 由 AppKit 的 `application:openURLs:` 调用；
+    /// Linux 在回调注册时重放本次启动命令行里由桌面入口 `%u` 传入的 URL；
+    /// Windows 当前只保存回调、没有派发点。
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>);
     /// 注册自定义 URL scheme（如 `myapp://`），使系统将该 scheme 的 URL 分发到本应用。
     fn register_url_scheme(&self, url: &str) -> Task<Result<()>>;
