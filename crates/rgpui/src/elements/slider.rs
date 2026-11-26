@@ -318,6 +318,13 @@ impl SliderState {
         self.step
     }
 
+    /// 用户是否正在按下/拖动滑块。
+    ///
+    /// 订阅方用它区分真实鼠标交互与程序同步、键盘残留事件。
+    pub fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+
     /// 将 0.0 到 1.0 之间的值转换为最小值和最大值之间的值，取决于刻度模式。
     fn percentage_to_value(&self, percentage: f32) -> f32 {
         match self.scale {
@@ -507,6 +514,9 @@ pub struct Slider {
     style: StyleRefinement,
     /// 是否禁用
     disabled: bool,
+    /// 是否进入焦点链并响应键盘；状态栏这类辅助滑杆可关掉，
+    /// 避免 Tab 或快捷键误落到滑杆上改值。鼠标拖动仍然可用。
+    focusable: bool,
 }
 
 impl Slider {
@@ -517,6 +527,7 @@ impl Slider {
             state: state.clone(),
             style: StyleRefinement::default(),
             disabled: false,
+            focusable: true,
         }
     }
 
@@ -535,6 +546,15 @@ impl Slider {
     /// 设置滑块的禁用状态，默认：false
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// 是否参与键盘焦点链，默认：true。
+    ///
+    /// 关掉后仍可用鼠标点击/拖动改值，但不会抢 Tab 焦点，
+    /// 也不会把方向键、Home/End 等按键解释成改值。
+    pub fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
         self
     }
 
@@ -628,7 +648,7 @@ impl RenderOnce for Slider {
             .use_keyed_state(("slider-focus", entity_id), cx, |_, cx| cx.focus_handle())
             .read(cx)
             .clone();
-        let is_focused = focus_handle.is_focused(window);
+        let is_focused = self.focusable && focus_handle.is_focused(window);
         let state = self.state.read(cx);
         let is_range = state.value().is_range();
         let percentage = state.percentage.clone();
@@ -697,7 +717,7 @@ impl RenderOnce for Slider {
                 Orientation::Horizontal
             })
             // 禁用态不挂增减动作、不进焦点链：辅助技术与 Tab 都跳过（与 checkbox/radio 同款口径）。
-            .when(!self.disabled, |this| {
+            .when(!self.disabled && self.focusable, |this| {
                 // 句柄本身要标成制表位，`focus_next` 才会把 Tab 交给我们。
                 this.track_focus(&focus_handle.tab_stop(true))
                     .on_key_down({
@@ -721,7 +741,7 @@ impl RenderOnce for Slider {
                         }
                     })
             })
-            .focus_ring(is_focused, px(2.), window, cx)
+            .when(self.focusable, |this| this.focus_ring(is_focused, px(2.), window, cx))
             .flex()
             .flex_1()
             .items_center()
