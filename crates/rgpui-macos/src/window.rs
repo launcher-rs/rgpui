@@ -804,6 +804,7 @@ impl MacWindow {
             display_id,
             window_min_size,
             tabbing_identifier,
+            mouse_passthrough,
             ..
         }: WindowParams,
         cursor_visible: Arc<AtomicBool>,
@@ -988,6 +989,11 @@ impl MacWindow {
             }
 
             native_window.setMovable_(is_movable as BOOL);
+            // 桌面宠物/覆盖层场景：此前 macOS 建窗路径用 `..` 吞掉了该字段，
+            // 设 mouse_passthrough 完全无效；NSWindow 的 ignoresMouseEvents 即对应能力。
+            if mouse_passthrough {
+                let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
+            }
 
             if let Some(window_min_size) = window_min_size {
                 native_window.setContentMinSize_(NSSize {
@@ -1667,6 +1673,14 @@ impl PlatformWindow for MacWindow {
                 }
             })
             .detach();
+    }
+
+    /// 运行时切换鼠标穿透（与建窗时的 `mouse_passthrough` 字段对应）。
+    fn set_mouse_passthrough(&self, passthrough: bool) {
+        let window = self.0.lock().native_window;
+        unsafe {
+            let _: () = msg_send![window, setIgnoresMouseEvents: passthrough as BOOL];
+        }
     }
 
     fn set_position(&mut self, position: Point<Pixels>) {

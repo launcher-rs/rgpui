@@ -210,7 +210,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 
 | # | 问题 | 位置 | 状态 |
 |---|------|------|------|
-| M8 | `mouse_passthrough` / `app_owns_titlebar_drag` 在 macOS 建窗路径被 `..` 吞掉，后者文档承诺的语义未实现 | `macos/window.rs:789-804` | 待修 |
+| M8 | `mouse_passthrough` / `app_owns_titlebar_drag` 在 macOS 建窗路径被 `..` 吞掉，后者文档承诺的语义未实现 | `macos/window.rs:789-804` | **已修**：建窗设 ignoresMouseEvents + 运行时 set_mouse_passthrough（需 macOS CI 验证） |
 | M9 | 窗口级 `set_position` / `hide` 无实现（Windows/Linux 都有） | `macos/window.rs` 的 `impl PlatformWindow` | **已修**（需 macOS CI 验证） |
 | M10 | `request_attention` / `start_window_resize` 无实现（前者仅 X11 有，后者 Windows/X11/Linux 都有） | `macos/window.rs`；trait `platform.rs:1401/1338` | 待修 |
 | M11 | `window_bounds()` 永不返回 `Maximized`，绿钮最大化后重启只能还原普通大小 | `macos/window.rs:775-781` | **已修**（需 macOS CI 验证） |
