@@ -188,6 +188,54 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 
 ---
 
+## 五、macOS 维度（同分支顺带审计）
+
+> 项目当前**不承诺 macOS 支持、无真机验证**（`readme.md:8`），因此本机只能做源码级审查，
+> 改动需 CI 的 macOS 矩阵验证。行号以本分支为准。
+
+### 高
+
+| # | 问题 | 位置 | 影响 | 状态 |
+|---|------|------|------|------|
+| M1 | 默认 feature 下 macOS 完全没有文字渲染：`font-kit` 非默认，`MacPlatform::new` 只装 `NoopTextSystem` 并记一条默认级别不可见的 warn | `macos/platform.rs:212-223`；`rgpui-platform/Cargo.toml:17/19` | 窗口能开、矩形能画，但所有文本为空 | **已修**：`rgpui-platform` 默认开启 `font-kit`（需 macOS CI 验证运行时） |
+| M2 | `App::set_tray(Tray, menus)` 在 macOS 完全无实现（icon/menu/tooltip 有，聚合入口没有），菜单项 Action 丢失 | `app.rs:2694`；`macos/platform.rs` 的 `impl Platform` 无 `set_tray` | 托盘只出图标，菜单和动作全失效 | 待修 |
+| M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | 待修 |
+| M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | 待修 |
+| M5 | `InputMonitoring` 权限借用辅助功能状态，`request_permission` 也不请求输入监控 | `macos/permissions.rs:60-82`；`platform.rs:1233-1242` | UI 误报授权状态，请求静默无操作 | 待修 |
+| M6 | `start_window_move()` 同步跑 AppKit 模态拖拽循环，落在 `Rc<RefCell<App>>` 借用窗口内 | `macos/window.rs:1889-1898`；core `title_bar.rs:347-352` | 拖动标题栏时可能 borrowed 冲突 panic 或丢事件 | 待修 |
+| M7 | `windowShouldClose:` 的 take/put-back 模式在嵌套关闭询问时直接返回「允许关闭」 | `macos/window.rs:2647-2658` | 用户点取消仍可能关闭窗口，或双重借用 panic | 待修 |
+
+### 中
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| M8 | `mouse_passthrough` / `app_owns_titlebar_drag` 在 macOS 建窗路径被 `..` 吞掉，后者文档承诺的语义未实现 | `macos/window.rs:789-804` | 待修 |
+| M9 | 窗口级 `set_position` / `hide` 无实现（Windows/Linux 都有） | `macos/window.rs` 的 `impl PlatformWindow` | 待修 |
+| M10 | `request_attention` / `start_window_resize` 无实现（前者仅 X11 有，后者 Windows/X11/Linux 都有） | `macos/window.rs`；trait `platform.rs:1401/1338` | 待修 |
+| M11 | `window_bounds()` 永不返回 `Maximized`，绿钮最大化后重启只能还原普通大小 | `macos/window.rs:775-781` | 待修 |
+| M12 | `button_layout()` 恒 `None`，`on_button_layout_changed` 从不触发 | `macos/window.rs`；trait `platform.rs:374-376`、`1237` | 待修 |
+| M13 | `window_stack` / `active_window` / `tabbed_windows` 漏掉所有 `NSPanel` 窗口 | `macos/window.rs:1141/1159/1758` | 待修 |
+| M14 | 通知用废弃 `NSUserNotificationCenter`，`unwrap` + 恒 `Ok(())` | `macos/notifications.rs:28-58` | 待修 |
+| M15 | 自启路径用裸可执行文件而非 bundle，plist 未 XML 转义 | `macos/platform.rs:1292-1302`、`auto_launch.rs:27-49` | 待修 |
+| M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | 待修 |
+| M17 | `set_text_content_type` 跨线程直接调 AppKit，`CONTENT_TYPES` 按视图指针永久驻留 | `macos/window.rs:1941-1948`、`327-357` | 待修 |
+| M18 | `gpu_specs()` 恒 `None`，且 core 文档错写「Mac 和 Windows 上返回 None」（Windows 已实现） | `macos/window.rs:1812-1814`；core `window.rs:6655` | **文档已修**，macOS 侧实现仍待做 |
+| M19 | `selectNextTab:` / `selectPreviousTab:` 覆盖后没调 `super`，原生 tabGroup 高亮不同步 | `macos/window.rs:3218-3236` | 待修 |
+| M20 | 托盘面板模式 / 图标边界在 macOS 无实现，文档与技能写成通用能力（button.frame 其实可取边界） | `platform.rs:504-508`；`app.rs:2713-2734`；`tray.md:100-102` | 待修 |
+| M21 | `MacDisplay::all()` 硬编码 32 个显示器上限，失败即 panic | `macos/display.rs:49-66` | 待修 |
+| M22 | `network_status()` 把 `getifaddrs` 失败当成「断网」 | `macos/system_info.rs:46-61` | 待修 |
+
+### 低（摘要）
+
+M23 `tray_clicked` Ctrl+左键未映射为 `RightClick`（`tray.rs:72-94`）；M24 建窗 `Dialog` 依赖 mainWindow，否则静默降级（`window.rs:1017-1077`）；M25 `should_handle_reopen` 的 ivar 清理路径语义含糊、headless 分支不可达（`platform.rs:556-562/538-542`）。
+
+### 反复踩坑模式
+
+- **「跨平台 API + 平台侧默认空实现」**：Linux 的 `WindowControlArea`、macOS 的 `set_tray`/`set_position`/`hide`/`request_attention` 是同一形态。本审计 §3.1 / §3.2 的根因分析完全适用。
+- **只补 AppKit 主线程约束、漏掉重入**：`start_window_move`、`windowShouldClose:`、`menuWillOpen:` 仍同步回调。
+- **feature 门控静默降级**：macOS 的 `font-kit` 与 Linux 的 wayland/x11 feature 是同一类「编译通过但能力没接上」。
+- **废弃/私有 API 靠 unwrap 顶住**：`NSUserNotification`、`MacDisplay::all()` 的 `panic!`、`reset_cursor_rects` 私有 selector。
+
 ## 五、附：上一轮已修问题的回归提示
 
 上一轮审计中有几类问题反复出现，修复本轮问题时要避免重蹈覆辙：

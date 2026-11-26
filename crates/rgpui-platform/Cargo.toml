@@ -14,7 +14,10 @@ workspace = true
 path = "src/rgpui_platform.rs"
 
 [features]
-default = []
+# macOS 后端没有 font-kit 时会静默退化成 NoopTextSystem —— 窗口能开但所有文字为空，
+# 而默认日志级别看不到那条 warn。这里默认开启，保证只依赖 rgpui-platform 的下游
+# 在 macOS 上也能正常渲染文字；该 feature 只在 macOS 目标上转发给 rgpui-macos。
+default = ["font-kit"]
 multithreaded = ["rgpui-web/multithreaded"]
 font-kit = ["rgpui-macos/font-kit"]
 # test-support 要把各平台 crate 一起带上：平台侧的 render_to_image 等窗口方法

@@ -6654,7 +6654,8 @@ impl Window {
     }
 
     /// 读取支持此窗口的 GPU 的信息。
-    /// 目前在 Mac 和 Windows 上返回 None。
+    /// Windows 与三个 Linux 后端已实现，macOS 当前返回 `None`；
+    /// 未实现时返回 `None`，调用方不应把它等同于「没有 GPU」。
     pub fn gpu_specs(&self) -> Option<GpuSpecs> {
         self.platform_window.gpu_specs()
     }
