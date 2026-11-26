@@ -19,7 +19,7 @@ use crate::{DomNode, DomNodeKind, DomStyle};
 
 use super::super::{
     LastLayout, MASK_CHAR, RopeExt as _, RowTopY, TextDecoration, WhitespaceIndicators,
-    blink_cursor::CURSOR_WIDTH, display_map::LineLayout,
+    display_map::LineLayout,
 };
 use super::{InputState, mode::InputMode};
 
@@ -464,6 +464,7 @@ impl TextElement {
         Vec<Bounds<Pixels>>,
     ) {
         let state = self.state.read(cx);
+        let cursor_width = state.cursor_width();
 
         let line_height = last_layout.line_height;
         let visible_range = &last_layout.visible_range;
@@ -549,7 +550,7 @@ impl TextElement {
                     // 输入框不做段落方向重排，`Start` / `End` 按 LTR 处理。
                     TextAlign::Left | TextAlign::Start => RIGHT_MARGIN,
                     TextAlign::Right | TextAlign::End => px(0.),
-                    TextAlign::Center => CURSOR_WIDTH,
+                    TextAlign::Center => cursor_width,
                 };
 
                 scroll_offset.x = if scroll_offset.x + cursor_pos.x
@@ -608,7 +609,7 @@ impl TextElement {
             // 使其无需移动文本即可保持可见。
             let cursor_x = bounds.left() + cursor_pos.x + line_number_width + cursor_scroll_x;
             let cursor_x = if last_layout.text_align == TextAlign::Right {
-                cursor_x.min(bounds.right() - CURSOR_WIDTH)
+                cursor_x.min(bounds.right() - cursor_width)
             } else {
                 cursor_x
             };
@@ -617,7 +618,7 @@ impl TextElement {
                     cursor_x,
                     bounds.top() + cursor_pos.y + ((line_height - cursor_height) / 2.),
                 ),
-                size(CURSOR_WIDTH, cursor_height),
+                size(cursor_width, cursor_height),
             ))
         };
 
@@ -1335,7 +1336,7 @@ impl Element for TextElement {
                         let line_height = effective_line_height(state, window);
                         Some(Bounds {
                             origin: point(bounds.origin.x + caret_x, bounds.origin.y),
-                            size: size(CURSOR_WIDTH, line_height),
+                            size: size(state.cursor_width(), line_height),
                         })
                     } else if let Some(last_layout) = last_layout {
                         let mut cbounds = bounds;

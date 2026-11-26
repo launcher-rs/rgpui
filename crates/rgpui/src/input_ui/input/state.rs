@@ -444,6 +444,8 @@ pub struct InputState {
     /// 行高覆盖：富文本编辑器把外部段落行高透传给 Input，避免内部按字号推导并取整后
     /// 与外部静态文本的行高不一致（点击切换编辑态时段落边界会跳动）。
     pub(crate) line_height_override: Option<crate::Pixels>,
+    /// 光标宽度覆盖（`None` 用平台默认值）。
+    pub(crate) cursor_width_override: Option<crate::Pixels>,
     /// 折行宽度右侧预留：默认沿用原先的 `RIGHT_MARGIN`（10px）。外部排版器若已
     /// 计算好完全相同的折行宽度，可设为 0，使 Input 与外部文本在相同宽度处折行。
     pub(crate) wrap_width_inset: crate::Pixels,
@@ -595,6 +597,7 @@ impl InputState {
             read_only: false,
             font_size_override: None,
             line_height_override: None,
+            cursor_width_override: None,
             wrap_width_inset: super::element::RIGHT_MARGIN,
             row_count_override: None,
             #[cfg(feature = "editor")]
@@ -857,6 +860,24 @@ impl InputState {
     ) {
         self.line_height_override = line_height;
         cx.notify();
+    }
+
+    /// 覆盖光标宽度（`None` 用平台默认值）。
+    ///
+    /// 外部排版器按真实文档字号排版时，默认的 2px 光标在高分屏缩放下会显得偏粗，
+    /// 调用方可传更细的宽度（如 1px）。
+    pub fn set_cursor_width_override(
+        &mut self,
+        width: Option<crate::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.cursor_width_override = width;
+        cx.notify();
+    }
+
+    /// 实际使用的光标宽度。
+    pub(crate) fn cursor_width(&self) -> crate::Pixels {
+        self.cursor_width_override.unwrap_or(super::super::blink_cursor::CURSOR_WIDTH)
     }
 
     /// 设置折行宽度的右侧预留（默认 10px）。
