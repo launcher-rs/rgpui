@@ -993,11 +993,20 @@ impl X11WindowState {
             // This prevents the window from being resized larger than what the GPU can render.
             let max_texture_size = renderer.max_texture_size();
             let mut size_hints = WmSizeHints::new();
-            if let Some(size) = params.window_min_size {
-                size_hints.min_size =
-                    Some((f32::from(size.width) as i32, f32::from(size.height) as i32));
+            if params.is_resizable {
+                if let Some(size) = params.window_min_size {
+                    size_hints.min_size =
+                        Some((f32::from(size.width) as i32, f32::from(size.height) as i32));
+                }
+                size_hints.max_size = Some((max_texture_size as i32, max_texture_size as i32));
+            } else {
+                // is_resizable:false：min=max=初始尺寸，让窗口管理器真正禁止缩放，
+                // 而不只是 Motif functions 位（很多 WM 不理那个位）
+                let size = params.bounds.size;
+                let wh = (f32::from(size.width) as i32, f32::from(size.height) as i32);
+                size_hints.min_size = Some(wh);
+                size_hints.max_size = Some(wh);
             }
-            size_hints.max_size = Some((max_texture_size as i32, max_texture_size as i32));
             check_reply(
                 || {
                     format!(

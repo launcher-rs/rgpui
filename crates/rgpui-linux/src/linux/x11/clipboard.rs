@@ -392,7 +392,9 @@ impl Inner {
                 }
             }
         }
-        log::trace!("所有支持的格式转换均失败");
+        // 所有支持的格式都拿不到内容，用户会看到「粘贴无反应」；
+        // 默认日志级别是 error，这里需要 warn 才能排查
+        log::warn!("所有支持的剪贴板格式转换均失败，粘贴将得不到内容");
         Err(Error::ContentNotAvailable)
     }
 
