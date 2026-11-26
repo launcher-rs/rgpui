@@ -1041,6 +1041,9 @@ impl LinuxClient for WaylandClient {
             state.globals.primary_selection_manager.clone(),
             state.primary_selection.clone(),
         ) else {
+            log::warn!(
+                "Wayland: 合成器没有 primary-selection 管理器，写入 Primary Selection 被忽略"
+            );
             return;
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
@@ -1064,6 +1067,7 @@ impl LinuxClient for WaylandClient {
             state.globals.data_device_manager.clone(),
             state.data_device.clone(),
         ) else {
+            log::warn!("Wayland: 合成器没有 data-device 管理器，写入剪贴板被忽略");
             return;
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {

@@ -376,6 +376,9 @@ pub trait Platform: 'static {
     }
 
     /// 在系统默认浏览器中打开 URL。
+    ///
+    /// 这是 fire-and-forget 调用：各平台异步启动外部程序，失败只记日志，
+    /// 调用方无法从此方法得知是否成功（部分平台会回退到门户 API）。
     fn open_url(&self, url: &str);
     /// 注册 URL scheme 回调，当应用通过自定义 URL scheme 打开时触发。
     ///
@@ -400,6 +403,8 @@ pub trait Platform: 'static {
     /// 文件选择对话框是否支持同时选择文件和目录。
     fn can_select_mixed_files_and_dirs(&self) -> bool;
     /// 在系统文件管理器中显示（reveal）指定路径。
+    ///
+    /// 同 `open_url`：fire-and-forget，失败只记日志，调用方无从判断结果。
     fn reveal_path(&self, path: &Path);
     /// 使用系统默认应用打开指定路径。
     fn open_with_system(&self, path: &Path);
@@ -1362,6 +1367,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 设置 Wayland app_id（用于窗口标识和桌面集成）。
     fn set_app_id(&mut self, _app_id: &str) {}
     /// 映射窗口（X11 下将窗口显示到屏幕）。
+    ///
+    /// Wayland 没有对应的显式操作：窗口在建窗时 `surface.commit()` 即隐式映射，
+    /// 走此默认实现返回 `Ok(())` 并非失败，而是「平台隐式完成」。
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())
     }

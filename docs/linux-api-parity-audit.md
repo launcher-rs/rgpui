@@ -98,7 +98,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 29 | `Input::content_type` 的「密码管理器/自动填充」原生部分只实现了一半 | `input_ui/input/widget.rs:180-188`；`content_type.rs:152-171` 的 `#[cfg(not(macos))]` 分支是 `let _ = (window, content_type);` | 无障碍 Role 生效，但原生自动填充/输入法提示在 Linux 不发生 | **文档已修** |
 | 30 | `set_menus` 在 Linux 只存不显示，且与自绘 `AppMenuBar` 数据源不同步 | `app.rs:2612-2621`；`linux/platform.rs:814-822`；`menu/app_menu_bar.rs:47-63` 读 `GlobalState::app_menus()` | 只调 `cx.set_menus(...)` 在 Linux 看不到任何菜单栏 | **文档已修** |
 | 31 | `gpu_specs` 文档与实现相反 | `window.rs:6633-6637` 写「Mac 和 Windows 上返回 None」，但三个 Linux 后端都实现了（`x11/window.rs:2491`、`wayland/window.rs:2151`、`headless/window.rs:228`） | 文档误导，应用可能因此跳过 Linux 的 GPU 信息展示 | **已修** |
-| 32 | `map_window` 在 Wayland 走默认 `Ok(())`，文档未说明 | `platform.rs:1343-1346`；Wayland 无 override（建窗时 `surface.commit()` 已隐式映射） | 调用方无法区分「已映射」与「平台隐式完成」，排障时误导 | 已核实 |
+| 32 | `map_window` 在 Wayland 走默认 `Ok(())`，文档未说明 | `platform.rs:1343-1346`；Wayland 无 override（建窗时 `surface.commit()` 已隐式映射） | 调用方无法区分「已映射」与「平台隐式完成」，排障时误导 | **文档已修** |
 | 33 | `Platform` 默认实现 rustdoc 把「返回 `Ok(())` / 空值」写成成功 —— 1.4.1 假实现模式残留 | `platform.rs:514-526`、`528-535`（`register_global_hotkey` / `show_notification` / `set_auto_launch` 默认 `Ok(())` 但什么都没做） | 任何未 override 的后端都会骗调用方；这是本轮一大批问题的**系统性根源** | **文档已修**：三个默认实现明确「Ok 但什么都没做」 |
 | 34 | 技能索引没有 Linux 入口，只有 Windows 平台条目 | `skills/rgpui/SKILL.md:6-54/77-84`；`readme.md:144-151` 未链接 `docs/linux-platform-audit.md` | Linux 审计文档对加载技能的调用者完全不可发现，**放大本清单每一条** | **已修**：SKILL.md 导航与附录新增 Linux/macOS 审计入口 |
 | 35 | 托盘技能把 `set_tray_panel_mode` / `tray_icon_bounds` 写成可用 | `skills/rgpui/references/tray.md:100-102/162-163`；`app.rs:2713-2734`；Linux `platform.rs:433-441`（Ubuntu host 忽略）、`get_tray_icon_bounds` 恒 `None` | 「托盘图标下方定位窗口」在 Linux 直接失效 | 已核实 |
@@ -121,12 +121,12 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 44 | Wayland 光标主题加载失败直接 `return`，指针完全消失（无默认兜底） | `wayland/cursor.rs:118-121` | **已修** |
 | 45 | 托盘 watcher 初始注册失败只 `debug!`，后续只靠命令流重试，shell 重启后可能永不注册 | `tray_sni.rs:396-416` | **已修** |
 | 46 | 电源事件监听失败后只 warn 且 `power_listener_started` 仍置 true，永不重试 | `platform.rs:266-283` | **已修** |
-| 47 | `open_uri` / `reveal_path` 全失败只 `log::error!`，函数返回 `()` | `platform.rs:1027-1071`、`1080-1098` | 待验证 |
+| 47 | `open_uri` / `reveal_path` 全失败只 `log::error!`，函数返回 `()` | `platform.rs:1027-1071`、`1080-1098` | **文档已修** |
 | 48 | `set_exclusive_zone` 对非 layer-shell 窗口只 `debug!` 后返回 | `wayland/window.rs:2078-2097` | **已修** |
 | 49 | `headless/window.rs` 的 frame / close / input 回调全空，等一帧的 Future 永不 resolve | `headless/window.rs:193-216` | **已修** |
 | 50 | X11 无效 `GPUI_X11_SCALE_FACTOR` 环境变量直接 panic | `x11/client.rs:2732`、`2740` | **已修**：warn + 回退自动探测 |
 | 51 | `auto_launch` 硬编码 `$HOME/.config/autostart`，忽略 `XDG_CONFIG_HOME` | `auto_launch.rs:79-82` | **已修**：按 XDG Base Directory 读取 XDG_CONFIG_HOME |
-| 52 | 剪贴板不支持的转换目标 / 缺 selection owner 时只 warn + `return` | `x11/clipboard.rs:362/379`；`wayland/client.rs:1022-1049` | 待验证 |
+| 52 | 剪贴板不支持的转换目标 / 缺 selection owner 时只 warn + `return` | `x11/clipboard.rs:362/379`；`wayland/client.rs:1022-1049` | **部分已修**：Wayland 写入缺管理器时记 warn；X11 格式回退仍只 trace |
 | 53 | X11 光标加载失败日志分支条件写反（误导排查方向） | `x11/client.rs:2229-2236` | **已修** |
 | 54 | Wayland `wl_pointer::Axis` 未知值 `unreachable!()` | `wayland/client.rs:2166/2193/2209/2221` | **已修** |
 | 55 | XIM preedit 的下划线/高亮/选中反馈属性被忽略，只传纯文本 | `x11/xim_handler.rs:141` | 待验证 |
