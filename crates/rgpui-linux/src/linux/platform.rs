@@ -265,18 +265,27 @@ impl LinuxCommon {
         (common, main_receiver, power_receiver)
     }
 
-    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道
+    /// 启动 login1 电源事件监听；只启一次，睡眠与唤醒两类事件都走这一条通道。
+    /// 失败时带退避重试（无 login1 / 权限不足等场景），不再永久静默。
     pub(crate) fn start_power_listener(&mut self) {
         if !self.power_listener_started {
             #[cfg(any(feature = "wayland", feature = "x11"))]
             smol::spawn({
                 let power_sender = self.power_sender.clone();
                 async move {
-                    if let Err(error) =
-                        crate::linux::power::listen_for_system_power(power_sender).await
-                    {
-                        // 监听挂了之后电源/唤醒事件不会再来，应用侧无处察觉，原因只能记在这里
-                        log::warn!("监听系统电源事件失败，电源事件将不再送达: {error:#}");
+                    let mut delay = std::time::Duration::from_secs(2);
+                    const MAX_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+                    loop {
+                        match crate::linux::power::listen_for_system_power(power_sender.clone())
+                            .await
+                        {
+                            Ok(()) => return,
+                            Err(error) => {
+                                log::warn!("监听系统电源事件失败，{delay:?} 后重试: {error:#}");
+                                smol::Timer::after(delay).await;
+                                delay = delay.saturating_mul(2).min(MAX_DELAY);
+                            }
+                        }
                     }
                 }
             })

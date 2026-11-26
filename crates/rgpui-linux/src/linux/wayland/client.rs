@@ -835,7 +835,16 @@ impl LinuxClient for WaylandClient {
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        None
+        // Wayland 没有「主显示器」协议概念（xdg-output 不标记 primary），
+        // 与 X11 口径对齐：取第一个已识别的输出作为主屏，让新建窗口居中、
+        // 取色浮层尺寸正确；没有输出时仍返回 None。
+        self.0.borrow().outputs.iter().next().map(|(id, output)| {
+            Rc::new(WaylandDisplay {
+                id: id.clone(),
+                name: output.name.clone(),
+                bounds: output.bounds.to_pixels(output.scale as f32),
+            }) as Rc<dyn PlatformDisplay>
+        })
     }
 
     // 与 X11 对称地如实声明能力：Wayland 的 screen_capture_sources 目前只会返回 Err，
@@ -1089,7 +1098,26 @@ impl LinuxClient for WaylandClient {
     }
 
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
-        None
+        // Wayland 没有读取全局窗口 Z-order 的协议（隐私边界）。能准确知道的
+        // 只有「当前焦点窗口」，把它放最前、其余按创建顺序作为近似，让调用方
+        // 至少能拿到本应用的窗口列表；顺序不代表真实层叠，请勿据此做严格判定。
+        let state = self.0.borrow();
+        let focused_handle = state
+            .keyboard_focused_window
+            .as_ref()
+            .map(|window| window.handle());
+        let mut handles: Vec<AnyWindowHandle> = Vec::new();
+        if let Some(handle) = focused_handle {
+            handles.push(handle);
+        }
+        handles.extend(
+            state
+                .windows
+                .values()
+                .map(|window| window.handle())
+                .filter(|handle| !focused_handle.is_some_and(|focused| focused == *handle)),
+        );
+        Some(handles)
     }
 
     fn activate_app(&self) {
