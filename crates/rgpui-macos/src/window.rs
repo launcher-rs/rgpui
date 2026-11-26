@@ -545,6 +545,8 @@ struct MacWindowState {
     resize_callback: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
     moved_callback: Option<Box<dyn FnMut()>>,
     should_close_callback: Option<Box<dyn FnMut() -> bool>>,
+    /// 关闭询问回调正在执行中（嵌套的 windowShouldClose 不能返回 YES 放行关闭）
+    should_close_in_progress: bool,
     close_callback: Option<Box<dyn FnOnce()>>,
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
@@ -942,6 +944,7 @@ impl MacWindow {
                 resize_callback: None,
                 moved_callback: None,
                 should_close_callback: None,
+                should_close_in_progress: false,
                 close_callback: None,
                 appearance_changed_callback: None,
                 input_handler: None,
@@ -2717,10 +2720,18 @@ extern "C" fn window_did_change_key_status(this: &Object, selector: Sel, _: id) 
 extern "C" fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
     let window_state = unsafe { get_window_state(this) };
     let mut lock = window_state.as_ref().lock();
+    // 回调被 take 出来执行期间若嵌套再收到关闭询问（确认对话框里 remove_window /
+    // quit 等），绝不能返回 YES —— 那会让用户点了「取消」窗口仍被关闭。
+    if lock.should_close_in_progress {
+        return NO;
+    }
     if let Some(mut callback) = lock.should_close_callback.take() {
+        lock.should_close_in_progress = true;
         drop(lock);
         let should_close = callback();
-        window_state.lock().should_close_callback = Some(callback);
+        let mut lock = window_state.lock();
+        lock.should_close_in_progress = false;
+        lock.should_close_callback = Some(callback);
         should_close as BOOL
     } else {
         YES

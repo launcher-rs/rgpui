@@ -203,8 +203,8 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | **已修**（需 macOS 真机/CI 验证） |
 | M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | **已修**：AXUIElement 读 kAXFocusedWindowAttribute/kAXTitleAttribute（需 macOS CI 验证） |
 | M5 | `InputMonitoring` 权限借用辅助功能状态，`request_permission` 也不请求输入监控 | `macos/permissions.rs:60-82`；`platform.rs:1233-1242` | UI 误报授权状态，请求静默无操作 | **已修**：独立 TCC 类别 preflight/request（需 macOS CI 验证） |
-| M6 | `start_window_move()` 同步跑 AppKit 模态拖拽循环，落在 `Rc<RefCell<App>>` 借用窗口内 | `macos/window.rs:1889-1898`；core `title_bar.rs:347-352` | 拖动标题栏时可能 borrowed 冲突 panic 或丢事件 | 待修 |
-| M7 | `windowShouldClose:` 的 take/put-back 模式在嵌套关闭询问时直接返回「允许关闭」 | `macos/window.rs:2647-2658` | 用户点取消仍可能关闭窗口，或双重借用 panic | 待修 |
+| M6 | `start_window_move()` 同步跑 AppKit 模态拖拽循环，落在 `Rc<RefCell<App>>` 借用窗口内 | `macos/window.rs:1889-1898`；core `title_bar.rs:347-352` | 拖动标题栏时可能 borrowed 冲突 panic 或丢事件 | **待做**：推迟 performWindowDragWithEvent 会让 currentEvent 失效，需真机设计 |
+| M7 | `windowShouldClose:` 的 take/put-back 模式在嵌套关闭询问时直接返回「允许关闭」 | `macos/window.rs:2647-2658` | 用户点取消仍可能关闭窗口，或双重借用 panic | **已修**：嵌套关闭询问返回 NO（需 macOS CI 验证） |
 
 ### 中
 
@@ -218,7 +218,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M13 | `window_stack` / `active_window` / `tabbed_windows` 漏掉所有 `NSPanel` 窗口 | `macos/window.rs:1141/1159/1758` | **已修**（需 macOS CI 验证） |
 | M14 | 通知用废弃 `NSUserNotificationCenter`，`unwrap` + 恒 `Ok(())` | `macos/notifications.rs:28-58` | **已修**（需 macOS CI 验证） |
 | M15 | 自启路径用裸可执行文件而非 bundle，plist 未 XML 转义 | `macos/platform.rs:1292-1302`、`auto_launch.rs:27-49` | **已修**：plist 字符串做 XML 转义（需 macOS CI 验证） |
-| M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | 待修 |
+| M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | **待做**：需 SCStream 窗口源枚举 + 错误通道（需真机） |
 | M17 | `set_text_content_type` 跨线程直接调 AppKit，`CONTENT_TYPES` 按视图指针永久驻留 | `macos/window.rs:1941-1948`、`327-357` | **已修**：切前台执行器 + dealloc_view 清理 CONTENT_TYPES（需 macOS CI 验证） |
 | M18 | `gpu_specs()` 恒 `None`，且 core 文档错写「Mac 和 Windows 上返回 None」（Windows 已实现） | `macos/window.rs:1812-1814`；core `window.rs:6655` | **文档已修**，macOS 侧实现仍待做 |
 | M19 | `selectNextTab:` / `selectPreviousTab:` 覆盖后没调 `super`，原生 tabGroup 高亮不同步 | `macos/window.rs:3218-3236` | **非缺陷**：core 回调已激活下一窗口，调 super 会双重切换；已文档化 |
