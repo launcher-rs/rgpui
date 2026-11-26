@@ -325,7 +325,7 @@ extern "C" fn stream_did_stop_with_error(_this: &Object, _: Sel, _stream: id, er
         let msg = if desc.is_null() {
             "未知错误".to_string()
         } else {
-            NSStringExt::to_str(&desc)
+            NSStringExt::to_str(&desc).to_string()
         };
         log::warn!("屏幕捕获流已停止: {msg}");
     }

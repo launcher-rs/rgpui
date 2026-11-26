@@ -1699,7 +1699,7 @@ impl PlatformWindow for MacWindow {
                 if_window_not_closed(closed, || unsafe {
                     NSWindow::setFrameTopLeftPoint_(
                         window,
-                        Objc2NSPoint::new(position.x.as_f32() as f64, position.y.as_f32() as f64),
+                        NSPoint::new(position.x.as_f32() as f64, position.y.as_f32() as f64),
                     );
                 })
             })
@@ -1719,7 +1719,7 @@ impl PlatformWindow for MacWindow {
     /// 此前该方法在 macOS 走 trait 默认空实现，调用方以为已提醒但什么都没发生。
     fn request_attention(&self) {
         unsafe {
-            let app: id = msg_send![APP_CLASS, sharedApplication];
+            let app = NSApplication::sharedApplication(nil);
             // NSCriticalAttentionRequestType = 2；用有限次请求避免一直弹跳
             let _: () = msg_send![app, requestUserAttention: 2u64];
         }

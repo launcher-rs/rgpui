@@ -63,7 +63,8 @@ impl MacPermissions {
     fn check_input_monitoring_permission(&self) -> PermissionStatus {
         #[cfg(target_os = "macos")]
         {
-            if input_monitoring::CGPreflightListenEventAccess() {
+            // SAFETY: CGPreflightListenEventAccess 只查询 TCC 授权状态，不访问用户数据
+            if unsafe { input_monitoring::CGPreflightListenEventAccess() } {
                 PermissionStatus::Granted
             } else {
                 PermissionStatus::Denied

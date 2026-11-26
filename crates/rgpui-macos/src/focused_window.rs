@@ -3,6 +3,7 @@
 //! 使用 Cocoa `NSWorkspace` 和 `AXUIElement` API 获取当前活动窗口信息
 
 use cocoa::base::{id, nil};
+use core_foundation_sys::base::CFTypeRef;
 use objc::{msg_send, rc::autoreleasepool, runtime::Class, sel, sel_impl};
 use rgpui::FocusedWindowInfo;
 
