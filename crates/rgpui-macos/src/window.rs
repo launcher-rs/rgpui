@@ -775,6 +775,10 @@ impl MacWindowState {
     fn window_bounds(&self) -> WindowBounds {
         if self.is_fullscreen() {
             WindowBounds::Fullscreen(self.fullscreen_restore_bounds)
+        } else if self.is_maximized() {
+            // 绿钮最大化后保存/恢复窗口状态时必须能还原成 Maximized，
+            // 否则重启只会恢复成普通大小
+            WindowBounds::Maximized(self.bounds())
         } else {
             WindowBounds::Windowed(self.bounds())
         }

@@ -212,10 +212,10 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M8 | `mouse_passthrough` / `app_owns_titlebar_drag` 在 macOS 建窗路径被 `..` 吞掉，后者文档承诺的语义未实现 | `macos/window.rs:789-804` | 待修 |
 | M9 | 窗口级 `set_position` / `hide` 无实现（Windows/Linux 都有） | `macos/window.rs` 的 `impl PlatformWindow` | 待修 |
 | M10 | `request_attention` / `start_window_resize` 无实现（前者仅 X11 有，后者 Windows/X11/Linux 都有） | `macos/window.rs`；trait `platform.rs:1401/1338` | 待修 |
-| M11 | `window_bounds()` 永不返回 `Maximized`，绿钮最大化后重启只能还原普通大小 | `macos/window.rs:775-781` | 待修 |
+| M11 | `window_bounds()` 永不返回 `Maximized`，绿钮最大化后重启只能还原普通大小 | `macos/window.rs:775-781` | **已修**（需 macOS CI 验证） |
 | M12 | `button_layout()` 恒 `None`，`on_button_layout_changed` 从不触发 | `macos/window.rs`；trait `platform.rs:374-376`、`1237` | 待修 |
 | M13 | `window_stack` / `active_window` / `tabbed_windows` 漏掉所有 `NSPanel` 窗口 | `macos/window.rs:1141/1159/1758` | 待修 |
-| M14 | 通知用废弃 `NSUserNotificationCenter`，`unwrap` + 恒 `Ok(())` | `macos/notifications.rs:28-58` | 待修 |
+| M14 | 通知用废弃 `NSUserNotificationCenter`，`unwrap` + 恒 `Ok(())` | `macos/notifications.rs:28-58` | **已修**（需 macOS CI 验证） |
 | M15 | 自启路径用裸可执行文件而非 bundle，plist 未 XML 转义 | `macos/platform.rs:1292-1302`、`auto_launch.rs:27-49` | 待修 |
 | M16 | 屏幕捕获只列显示器不列窗口，流失败回调为空 | `macos/screen_capture.rs:243-285/321` | 待修 |
 | M17 | `set_text_content_type` 跨线程直接调 AppKit，`CONTENT_TYPES` 按视图指针永久驻留 | `macos/window.rs:1941-1948`、`327-357` | 待修 |
