@@ -43,6 +43,11 @@ rgpui = { workspace = true, features = ["windows-manifest"] }
 # 若不在此开启，Linux 上会编译出无 X11/Wayland 的空后端，程序静默回落到 Headless，
 # 既不创建窗口也不报错。同时开启 rgpui 的 wayland/x11，否则 guess_compositor()
 # 读不到 DISPLAY/WAYLAND_DISPLAY 而恒返回 "Headless"。
+#
+# 注意：这里**强制双后端全开**，因此本 crate 的 `wayland` / `x11` feature 在 Linux
+# 上目前只是转发标记，不能真正裁剪后端（关掉 x11 仍会编进来）。这是上一轮审计
+# （docs/linux-platform-audit.md §2.1）为杜绝静默 Headless 做的中央修复，刻意保留。
+# 要真正按部署场景裁剪需要同时改这里和 feature 默认值，并逐一验证组合。
 rgpui-linux = { workspace = true, features = ["wayland", "x11"] }
 rgpui = { workspace = true, features = ["wayland", "x11"] }
 

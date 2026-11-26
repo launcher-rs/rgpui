@@ -83,7 +83,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 14 | `focused_window` 只要编了 x11 feature 就无条件连 X11，即使在 Wayland 会话 | `focused_window.rs:17-22` | Wayland + XWayland 下返回 XWayland 客户端信息，不是当前原生窗口 | **已修** |
 | 15 | X11 缩放因子不读 XSettings，RandR 失败直接硬编码 1.0 | `x11/client.rs:2772`、`2766` | XFCE / GNOME X11 下 UI 尺寸偏小或偏大 | 待验证 |
 | 16 | 剪贴板交接给 manager 超时只 warn + `Ok(())` | `x11/clipboard.rs:852-857` | 复制后退出应用，粘贴板变空，调用方无错误 | **已修** |
-| 17 | `rgpui-platform` 的 wayland/x11 feature 在 Linux 上是空操作（依赖硬编码双后端） | `crates/rgpui-platform/Cargo.toml:25-26`、`43-44` | 用户以为关掉了某后端，实际仍编进来；或以为选了 wayland 仍走 X11 | 待验证 |
+| 17 | `rgpui-platform` 的 wayland/x11 feature 在 Linux 上是空操作（依赖硬编码双后端） | `crates/rgpui-platform/Cargo.toml:25-26`、`43-44` | 用户以为关掉了某后端，实际仍编进来；或以为选了 wayland 仍走 X11 | **文档已修** |
 | 18 | 一批 `Platform` 方法持续空实现且无能力查询 | `platform.rs:829-833`、`952`、`802-806`、`824-827`、`544-551` | 最近文档 / dock 跳转列表 / 热状态等 UI 静默无效果 | 待验证 |
 | 19 | X11 `window_controls()` 未覆盖，走默认「四项全支持」 | `crates/rgpui/src/platform.rs:940-949`（`WindowControls::default()` 全 `true`）；X11 `window.rs` 无该方法；Wayland `window.rs:2130` 有真实能力上报 | `TitleBar` 据该值绘制按钮；平铺 WM / 不支持 min/max 的 WM 上会画出点了没反应的按钮（与本轮 #1 同类） | **已修** |
 | 20 | `should_auto_hide_scrollbars` 在 Linux 永远 `false`（字段无写入点） | `crates/rgpui-linux/src/linux/platform.rs:190/245`、`847-848`；对照 Windows `platform.rs:962/1628` | 主题 `scrollbar_show` 恒为 `Hover`，不跟随 GNOME/KDE 系统设置 | 待验证 |
@@ -101,12 +101,12 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 32 | `map_window` 在 Wayland 走默认 `Ok(())`，文档未说明 | `platform.rs:1343-1346`；Wayland 无 override（建窗时 `surface.commit()` 已隐式映射） | 调用方无法区分「已映射」与「平台隐式完成」，排障时误导 | **文档已修** |
 | 33 | `Platform` 默认实现 rustdoc 把「返回 `Ok(())` / 空值」写成成功 —— 1.4.1 假实现模式残留 | `platform.rs:514-526`、`528-535`（`register_global_hotkey` / `show_notification` / `set_auto_launch` 默认 `Ok(())` 但什么都没做） | 任何未 override 的后端都会骗调用方；这是本轮一大批问题的**系统性根源** | **文档已修**：三个默认实现明确「Ok 但什么都没做」 |
 | 34 | 技能索引没有 Linux 入口，只有 Windows 平台条目 | `skills/rgpui/SKILL.md:6-54/77-84`；`readme.md:144-151` 未链接 `docs/linux-platform-audit.md` | Linux 审计文档对加载技能的调用者完全不可发现，**放大本清单每一条** | **已修**：SKILL.md 导航与附录新增 Linux/macOS 审计入口 |
-| 35 | 托盘技能把 `set_tray_panel_mode` / `tray_icon_bounds` 写成可用 | `skills/rgpui/references/tray.md:100-102/162-163`；`app.rs:2713-2734`；Linux `platform.rs:433-441`（Ubuntu host 忽略）、`get_tray_icon_bounds` 恒 `None` | 「托盘图标下方定位窗口」在 Linux 直接失效 | 已核实 |
-| 36 | `TrayIconEvent` 文档按 Windows/macOS 语义写，Ubuntu 主机实际不同 | `tray.md:38-42/93`；`system/tray.rs:9-16`；SNI `tray_sni.rs:120/129` | Ubuntu/appindicators：左键打开菜单、**双击**才触发 `Activate`、右键永不产出 `LeftClick` | 已核实 |
+| 35 | 托盘技能把 `set_tray_panel_mode` / `tray_icon_bounds` 写成可用 | `skills/rgpui/references/tray.md:100-102/162-163`；`app.rs:2713-2734`；Linux `platform.rs:433-441`（Ubuntu host 忽略）、`get_tray_icon_bounds` 恒 `None` | 「托盘图标下方定位窗口」在 Linux 直接失效 | **文档已修** |
+| 36 | `TrayIconEvent` 文档按 Windows/macOS 语义写，Ubuntu 主机实际不同 | `tray.md:38-42/93`；`system/tray.rs:9-16`；SNI `tray_sni.rs:120/129` | Ubuntu/appindicators：左键打开菜单、**双击**才触发 `Activate`、右键永不产出 `LeftClick` | **文档已修** |
 | 37 | `title-bar.md` 未标 `on_close_window` 为 Linux-only，且示例指向不存在的 bin | `title-bar.md:49/37` | 标题栏入门者照抄无效 API / 跑不存在的命令 | **已修**：标注 Linux-only，示例改为 `window_showcase --bin custom_title_bar` |
 | 38 | 剪贴板技能表未标 `find_pasteboard` 仅 macOS、`primary` 仅 Linux/FreeBSD | `platform.md:48` | Linux 上调用 `find_pasteboard` 直接编译失败 | **已修** |
 | 39 | `window_decorations` 文档写「仅 Wayland」，实际 X11 已实现且 `TitleBar` 在 Linux 默认开 CSD | `platform.rs:2232-2234`；`window.rs:2477-2479`；X11 `window.rs:2437-2467`；`title_bar.rs:79-81` | 文档口径与实现不一致，调用者误判适用范围 | **已修** |
-| 40 | `docs/linux-platform-audit.md` 自身「已知问题清单」过期 | 该文件 `:3`、`:922-949` 列了 `show_dialog` / `on_media_key_event` / `read_write_find_pasteboard` 等 | 其中多项已在 1.5.0 删除（`CHANGELOG.md:463-466`），照它排查会去找不存在的接口 | 已核实 |
+| 40 | `docs/linux-platform-audit.md` 自身「已知问题清单」过期 | 该文件 `:3`、`:922-949` 列了 `show_dialog` / `on_media_key_event` / `read_write_find_pasteboard` 等 | 其中多项已在 1.5.0 删除（`CHANGELOG.md:463-466`），照它排查会去找不存在的接口 | **文档已修** |
 | 41 | `docs/rgpui-book` 窗口管理 / 入门 / 托盘三章 API 全面过期 | `01-getting-started.md:8/20-25/31-45`、`07-window-management.md:7-11/17-45/152-166/203-243` | `Window::default()` / `App::new()` / `gpui::blue()` 等当前 API 下任何平台都编译不过 | **已修** |
 
 ### P2 / P3（静默降级与日志缺失）
