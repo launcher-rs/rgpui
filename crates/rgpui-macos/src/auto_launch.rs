@@ -7,6 +7,23 @@ use std::path::PathBuf;
 
 use rgpui::Result;
 
+/// 转义 plist 字符串中的 XML 特殊字符：路径/应用名可能含 `&`、`<` 等，
+/// 直接内插会写出非法 plist，`set_auto_launch` 却返回 Ok。
+fn xml_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// macOS 自动启动管理器
 pub struct MacAutoLaunch;
 
@@ -45,7 +62,8 @@ impl MacAutoLaunch {
     <false/>
 </dict>
 </plist>"#,
-            app_name, app_path
+            xml_escape(app_name),
+            xml_escape(app_path)
         );
 
         fs::write(&plist_path, plist_content)?;

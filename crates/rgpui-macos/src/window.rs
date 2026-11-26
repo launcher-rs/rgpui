@@ -1995,12 +1995,20 @@ impl PlatformWindow for MacWindow {
     }
 
     fn set_text_content_type(&self, content_type: Option<&'static str>) {
-        let view = self.0.lock().native_view.as_ptr();
-        let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });
-        let ns_content_type = ns_content_type.unwrap_or(nil);
-        unsafe {
-            let _: () = msg_send![view, setContentType: ns_content_type];
-        }
+        let this = self.0.lock();
+        let view = this.native_view.clone();
+        let foreground = this.foreground_executor.clone();
+        drop(this);
+        // AppKit 必须在主线程调用；与其它 NSWindow/NSView 操作一样切到前台执行器
+        foreground
+            .spawn(async move {
+                let ns_content_type = content_type.map(|s| unsafe { ns_string(s) });
+                let ns_content_type = ns_content_type.unwrap_or(nil);
+                unsafe {
+                    let _: () = msg_send![view.as_ptr(), setContentType: ns_content_type];
+                }
+            })
+            .detach();
     }
 }
 
@@ -2095,6 +2103,12 @@ extern "C" fn dealloc_window(this: &Object, _: Sel) {
 
 extern "C" fn dealloc_view(this: &Object, _: Sel) {
     unsafe {
+        // 语义内容类型表按视图指针索引，视图销毁时必须清理，
+        // 否则 items 持有 Retained<NSString> 永久驻留
+        let key = this as *const _ as usize;
+        CONTENT_TYPES.with(|content_types| {
+            content_types.borrow_mut().remove(&key);
+        });
         drop_window_state(this);
         let _: () = msg_send![super(this, class!(NSView)), dealloc];
     }
