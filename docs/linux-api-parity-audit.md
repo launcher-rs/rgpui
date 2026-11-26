@@ -95,8 +95,8 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 26 | `appears_transparent` / `traffic_light_position` / `app_owns_titlebar_drag` 在 Linux 被丢弃，且后者文档误写「macOS 专用」 | `platform.rs:2395-2400`、`2242-2244`；X11 `window.rs:731-754`、Wayland `window.rs:538` 只读 `title`；`app_owns_titlebar_drag` 实际 Windows 也用（`rgpui-windows/src/window.rs:503`） | 照抄 `TitleBar::window_options()` 的调用者带着三个 Linux 无意义字段，且文档口径自相矛盾 | **已修** |
 | 27 | 一批 macOS-only API 无平台标注：`set_window_edited`、`show_character_palette`、`titlebar_double_click`、tab 系列、`set_text_content_type` | `window.rs:2992-3014`、`platform.rs:1276-1317`、`1429`；对照 `set_document_path`（`window.rs:2997` 已写 macOS） | 调用方以为平台级语义已生效，Linux 全是空操作 | **已修** |
 | 28 | `Tray::visible` 三个平台都不读 | `system/tray.rs:59-60`、`125-129`；Linux `platform.rs:382-405`、Windows `platform.rs:726-754`；SNI `tray_sni.rs:282/486` 恒 `true` | 设 `visible: false` 仍显示托盘图标 | **已修（Linux）**：映射为 SNI Status Active/Passive；Windows/macOS 仍未落地 |
-| 29 | `Input::content_type` 的「密码管理器/自动填充」原生部分只实现了一半 | `input_ui/input/widget.rs:180-188`；`content_type.rs:152-171` 的 `#[cfg(not(macos))]` 分支是 `let _ = (window, content_type);` | 无障碍 Role 生效，但原生自动填充/输入法提示在 Linux 不发生 | 待验证 |
-| 30 | `set_menus` 在 Linux 只存不显示，且与自绘 `AppMenuBar` 数据源不同步 | `app.rs:2612-2621`；`linux/platform.rs:814-822`；`menu/app_menu_bar.rs:47-63` 读 `GlobalState::app_menus()` | 只调 `cx.set_menus(...)` 在 Linux 看不到任何菜单栏 | 待验证 |
+| 29 | `Input::content_type` 的「密码管理器/自动填充」原生部分只实现了一半 | `input_ui/input/widget.rs:180-188`；`content_type.rs:152-171` 的 `#[cfg(not(macos))]` 分支是 `let _ = (window, content_type);` | 无障碍 Role 生效，但原生自动填充/输入法提示在 Linux 不发生 | **文档已修** |
+| 30 | `set_menus` 在 Linux 只存不显示，且与自绘 `AppMenuBar` 数据源不同步 | `app.rs:2612-2621`；`linux/platform.rs:814-822`；`menu/app_menu_bar.rs:47-63` 读 `GlobalState::app_menus()` | 只调 `cx.set_menus(...)` 在 Linux 看不到任何菜单栏 | **文档已修** |
 | 31 | `gpu_specs` 文档与实现相反 | `window.rs:6633-6637` 写「Mac 和 Windows 上返回 None」，但三个 Linux 后端都实现了（`x11/window.rs:2491`、`wayland/window.rs:2151`、`headless/window.rs:228`） | 文档误导，应用可能因此跳过 Linux 的 GPU 信息展示 | **已修** |
 | 32 | `map_window` 在 Wayland 走默认 `Ok(())`，文档未说明 | `platform.rs:1343-1346`；Wayland 无 override（建窗时 `surface.commit()` 已隐式映射） | 调用方无法区分「已映射」与「平台隐式完成」，排障时误导 | 已核实 |
 | 33 | `Platform` 默认实现 rustdoc 把「返回 `Ok(())` / 空值」写成成功 —— 1.4.1 假实现模式残留 | `platform.rs:514-526`、`528-535`（`register_global_hotkey` / `show_notification` / `set_auto_launch` 默认 `Ok(())` 但什么都没做） | 任何未 override 的后端都会骗调用方；这是本轮一大批问题的**系统性根源** | **文档已修**：三个默认实现明确「Ok 但什么都没做」 |
@@ -117,7 +117,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | # | 问题 | 位置 | 状态 |
 |---|------|------|------|
 | 42 | portal Settings 连接失败后整个 future 静默结束，外观/光标主题/减少动效全留默认值 | `xdg_desktop_portal.rs:44-47`、`177-186` | **已修** |
-| 43 | reduce-motion 变更只更新 `common`，已有窗口不重读，需重启应用 | `xdg_desktop_portal.rs:258-259`；`wayland/client.rs:708-713`、`x11/client.rs:548-550` | 待验证 |
+| 43 | reduce-motion 变更只更新 `common`，已有窗口不重读，需重启应用 | `xdg_desktop_portal.rs:258-259`；`wayland/client.rs:708-713`、`x11/client.rs:548-550` | **文档已修**（官方口径：需重启；热更新需新增平台回调通道） |
 | 44 | Wayland 光标主题加载失败直接 `return`，指针完全消失（无默认兜底） | `wayland/cursor.rs:118-121` | **已修** |
 | 45 | 托盘 watcher 初始注册失败只 `debug!`，后续只靠命令流重试，shell 重启后可能永不注册 | `tray_sni.rs:396-416` | **已修** |
 | 46 | 电源事件监听失败后只 warn 且 `power_listener_started` 仍置 true，永不重试 | `platform.rs:266-283` | **已修** |

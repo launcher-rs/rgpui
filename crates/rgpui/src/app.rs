@@ -1169,6 +1169,7 @@ impl App {
     /// 一旦调用过，本值即视为应用的显式决定，后续创建窗口不会再被系统
     /// 「减少动态效果」设置改写；若想让应用跟随系统，改用
     /// [`App::reduce_motion`] 读取即可，平台值会在每次创建窗口时同步进来。
+    /// Linux 上系统在运行时切换「减少动态效果」不会热更新到已开窗口，需重启应用。
     pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
         self.reduce_motion_override = true;
         if self.reduce_motion != reduce_motion {
@@ -2610,6 +2611,11 @@ impl App {
     }
 
     /// 设置此应用的菜单栏。这将替换任何现有的菜单栏。
+    ///
+    /// 注意：macOS 会把它显示为系统菜单栏；Windows 与 Linux 只保存菜单数据，
+    /// 不会显示原生菜单栏。Linux 上若要用自绘的 `AppMenuBar`，还需通过
+    /// `GlobalState::set_app_menus` 同步同一份数据（平台层的存储与自绘组件
+    /// 的数据源当前互不连通）。
     pub fn set_menus(&self, menus: impl IntoIterator<Item = Menu>) {
         let menus: Vec<Menu> = menus.into_iter().collect();
         self.platform.set_menus(menus, &self.keymap.borrow());

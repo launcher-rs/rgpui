@@ -263,8 +263,9 @@ fn window_appearance_from_color_scheme(cs: ColorScheme) -> WindowAppearance {
 /// `enable-animations`（语义相反）。两者都读不到时返回 `None`，由调用方保持平台侧
 /// 默认值（动画开启）。
 ///
-/// 注：该值只在创建窗口时被核心层读取（`App::sync_reduce_motion_from_platform`），
-/// 因此下面的变更事件只影响其后新建的窗口，不热切换已开窗口。
+/// 注：核心层只在创建窗口时同步一次（`App::sync_reduce_motion_from_platform`），
+/// 目前没有「平台设置变更 → 已开窗口重读」的通知通道，因此下面的变更事件只影响
+/// 其后新建的窗口；系统里切换「减少动态效果」后需重启应用才对所有窗口生效。
 async fn read_reduce_motion(settings: &Settings) -> Option<bool> {
     if let Ok(reduced) = settings
         .read::<u32>("org.freedesktop.appearance", "reduced-motion")
