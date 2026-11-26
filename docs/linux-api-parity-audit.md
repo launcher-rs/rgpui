@@ -201,7 +201,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M1 | 默认 feature 下 macOS 完全没有文字渲染：`font-kit` 非默认，`MacPlatform::new` 只装 `NoopTextSystem` 并记一条默认级别不可见的 warn | `macos/platform.rs:212-223`；`rgpui-platform/Cargo.toml:17/19` | 窗口能开、矩形能画，但所有文本为空 | **已修**：`rgpui-platform` 默认开启 `font-kit`（需 macOS CI 验证运行时） |
 | M2 | `App::set_tray(Tray, menus)` 在 macOS 完全无实现（icon/menu/tooltip 有，聚合入口没有），菜单项 Action 丢失 | `app.rs:2694`；`macos/platform.rs` 的 `impl Platform` 无 `set_tray` | 托盘只出图标，菜单和动作全失效 | **已修**：拆解 icon/menu/tooltip + 旧 Action 经 on_app_menu_action 派发（需 macOS CI 验证） |
 | M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | **已修**（需 macOS 真机/CI 验证） |
-| M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | 待修 |
+| M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | **已修**：AXUIElement 读 kAXFocusedWindowAttribute/kAXTitleAttribute（需 macOS CI 验证） |
 | M5 | `InputMonitoring` 权限借用辅助功能状态，`request_permission` 也不请求输入监控 | `macos/permissions.rs:60-82`；`platform.rs:1233-1242` | UI 误报授权状态，请求静默无操作 | **已修**：独立 TCC 类别 preflight/request（需 macOS CI 验证） |
 | M6 | `start_window_move()` 同步跑 AppKit 模态拖拽循环，落在 `Rc<RefCell<App>>` 借用窗口内 | `macos/window.rs:1889-1898`；core `title_bar.rs:347-352` | 拖动标题栏时可能 borrowed 冲突 panic 或丢事件 | 待修 |
 | M7 | `windowShouldClose:` 的 take/put-back 模式在嵌套关闭询问时直接返回「允许关闭」 | `macos/window.rs:2647-2658` | 用户点取消仍可能关闭窗口，或双重借用 panic | 待修 |
@@ -224,7 +224,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M19 | `selectNextTab:` / `selectPreviousTab:` 覆盖后没调 `super`，原生 tabGroup 高亮不同步 | `macos/window.rs:3218-3236` | **非缺陷**：core 回调已激活下一窗口，调 super 会双重切换；已文档化 |
 | M20 | 托盘面板模式 / 图标边界在 macOS 无实现，文档与技能写成通用能力（button.frame 其实可取边界） | `platform.rs:504-508`；`app.rs:2713-2734`；`tray.md:100-102` | **部分已修**：get_tray_icon_bounds 用 button.frame 实现；panel mode 仍文档化为 Windows-only（需 macOS CI 验证） |
 | M21 | `MacDisplay::all()` 硬编码 32 个显示器上限，失败即 panic | `macos/display.rs:49-66` | **已修**（需 macOS 真机/CI 验证） |
-| M22 | `network_status()` 把 `getifaddrs` 失败当成「断网」 | `macos/system_info.rs:46-61` | 待修 |
+| M22 | `network_status()` 把 `getifaddrs` 失败当成「断网」 | `macos/system_info.rs:46-61` | **已修**：探测失败返回 ConnectedBelowRequired + warn（需 macOS CI 验证） |
 
 ### 低（摘要）
 

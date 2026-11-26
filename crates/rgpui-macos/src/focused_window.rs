@@ -62,22 +62,62 @@ pub fn get_focused_window_info() -> Option<FocusedWindowInfo> {
     }
 }
 
-/// 获取最前台窗口标题
-///
-/// # 返回
-/// 返回窗口标题，如果无法获取则返回空字符串
+/// 获取最前台窗口标题（通过 AXUIElement，需辅助功能权限）。
+/// 取不到时返回空字符串 —— 调用方应把它当作「标题未知」而非「没有窗口」。
 fn get_frontmost_window_title() -> String {
     unsafe {
-        // 使用 AXUIElement 获取窗口标题（需要辅助功能权限）
         let workspace_class = Class::get("NSWorkspace").unwrap();
         let workspace: id = msg_send![workspace_class, sharedWorkspace];
         let app: id = msg_send![workspace, frontmostApplication];
         if app == nil {
             return String::new();
         }
+        let pid: i32 = msg_send![app, processIdentifier];
+        if pid <= 0 {
+            return String::new();
+        }
 
-        // 简化实现：返回空字符串
-        // 完整实现需要使用 AXUIElementCreateApplication 和 AXUIElementCopyAttributeValue
+        let app_element = ax::AXUIElementCreateApplication(pid);
+        if app_element.is_null() {
+            return String::new();
+        }
+
+        let mut focused_window: CFTypeRef = std::ptr::null();
+        let focused_attr = ax::kAXFocusedWindowAttribute;
+        let status =
+            ax::AXUIElementCopyAttributeValue(app_element, focused_attr, &mut focused_window);
+        if status != 0 || focused_window.is_null() {
+            return String::new();
+        }
+
+        let mut title_value: CFTypeRef = std::ptr::null();
+        let title_attr = ax::kAXTitleAttribute;
+        let status =
+            ax::AXUIElementCopyAttributeValue(focused_window.cast(), title_attr, &mut title_value);
+        if status == 0 && !title_value.is_null() {
+            // title_value 是 CFStringRef；用 core_foundation 的安全包装转成 Rust String
+            let title: core_foundation::string::CFString =
+                core_foundation::base::TCFType::wrap_under_get_rule(title_value.cast());
+            return title.to_string();
+        }
         String::new()
+    }
+}
+
+/// AXUIElement API 绑定（ApplicationServices 框架）。
+mod ax {
+    use core_foundation_sys::base::CFTypeRef;
+    use core_foundation_sys::string::CFStringRef;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        pub fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+        pub fn AXUIElementCopyAttributeValue(
+            element: CFTypeRef,
+            attribute: CFStringRef,
+            value: *mut CFTypeRef,
+        ) -> i32;
+        pub static kAXFocusedWindowAttribute: CFStringRef;
+        pub static kAXTitleAttribute: CFStringRef;
     }
 }
