@@ -56,7 +56,7 @@ cargo run -p showcase --bin <名称>
 | `move_entity_between_windows` | 实体跨窗口迁移 | `cargo run -p showcase --bin move_entity_between_windows` |
 | `on_window_close_quit` | 关窗退出策略 | `cargo run -p showcase --bin on_window_close_quit` |
 | `ownership_post` | 实体所有权传递 | `cargo run -p showcase --bin ownership_post` |
-| `set_menus` | 原生菜单 | `cargo run -p showcase --bin set_menus` |
+| `set_menus` | 原生菜单数据（仅 macOS 显示为系统菜单栏；Windows/Linux 只存储） | `cargo run -p showcase --bin set_menus` |
 | `native_menu` | OS 原生弹出菜单（`NativeMenu` + `Window::show_native_menu`） | `cargo run -p showcase --bin native_menu` |
 | `native_notification` | 系统通知 | `cargo run -p showcase --bin native_notification` |
 
@@ -140,7 +140,7 @@ cargo run -p showcase --bin <名称>
 | `rgpui_term_integration` | 终端集成 |
 | `screen_capture` | 屏幕捕获 |
 | `webview` | WebView 集成 |
-| `layer_shell` | Wayland layer shell |
+| `layer_shell` | Linux 面板窗口（Wayland layer-shell / X11 DOCK+strut） |
 | `tokio_example` | Tokio 异步集成 |
 
 运行独立示例：`cargo run -p <crate> [--bin <名称>]`。

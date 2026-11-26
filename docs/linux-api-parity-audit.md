@@ -78,7 +78,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 |---|------|------|-------------|------|
 | 10 | Wayland `primary_display` / `window_stack` 恒 `None`，X11 已实现 | `wayland/client.rs:835-837`、`1082-1084`；`x11/client.rs:1631-1640`、`1944-1984` | 多屏定位、窗口栈枚举类功能在 Wayland 静默失效 | **已修** |
 | 11 | Wayland 权限查询在 portal 有 `GlobalShortcuts` 时返回 `NotDetermined`，但全局热键注册恒失败 | `permissions.rs:126-134`；`wayland/client.rs:530-557`、`platform.rs:112-118` | UI 显示「可申请」，注册总失败或注册后永不触发 | **已修** |
-| 12 | X11 不处理光标主题/大小变更事件，Wayland 会更新 | `x11/client.rs:551-553`；`wayland/client.rs:708-713` | 运行时切主题后应用内光标不更新，后端行为不对等 | 待验证 |
+| 12 | X11 不处理光标主题/大小变更事件，Wayland 会更新 | `x11/client.rs:551-553`；`wayland/client.rs:708-713` | 运行时切主题后应用内光标不更新，后端行为不对等 | **已修** |
 | 13 | X11 `request_frame` 缺失，纯定时动画卡住；Wayland 靠 `commit` 能推进 | `crates/rgpui/src/platform.rs:1404-1410`；`x11/window.rs` 的 `PlatformWindow` 实现 | 同一段动画代码在两个后端表现不同 | 待验证 |
 | 14 | `focused_window` 只要编了 x11 feature 就无条件连 X11，即使在 Wayland 会话 | `focused_window.rs:17-22` | Wayland + XWayland 下返回 XWayland 客户端信息，不是当前原生窗口 | **已修** |
 | 15 | X11 缩放因子不读 XSettings，RandR 失败直接硬编码 1.0 | `x11/client.rs:2772`、`2766` | XFCE / GNOME X11 下 UI 尺寸偏小或偏大 | 待验证 |
@@ -131,10 +131,10 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 54 | Wayland `wl_pointer::Axis` 未知值 `unreachable!()` | `wayland/client.rs:2166/2193/2209/2221` | **已修** |
 | 55 | XIM preedit 的下划线/高亮/选中反馈属性被忽略，只传纯文本 | `x11/xim_handler.rs:141` | 待验证 |
 | 56 | 多 seat 只取第一个，`// TODO: Multi seat support` | `wayland/client.rs:236`、`576-582`、`649` | 待验证 |
-| 57 | `examples/README.md:59` 把 `set_menus` 简写为「原生菜单」 | 示例自身已如实说明 Windows/Linux 只存储不渲染，README 没同步 | 待验证 |
-| 58 | `window_showcase` 的 Hide Titlebar 按钮在 Wayland / CSD 下必然无效 | `examples/window_showcase/src/bin/window.rs:254-267`；`TitleBar::window_options()` 默认 CSD | 待验证 |
-| 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | 已核实 |
-| 60 | 透明窗口示例无 X11/软件渲染环境限制提示 | `window_showcase/README.md:13`；`docs/linux-platform-audit.md:588-589` | 待验证 |
+| 57 | `examples/README.md:59` 把 `set_menus` 简写为「原生菜单」 | 示例自身已如实说明 Windows/Linux 只存储不渲染，README 没同步 | **已修** |
+| 58 | `window_showcase` 的 Hide Titlebar 按钮在 Wayland / CSD 下必然无效 | `examples/window_showcase/src/bin/window.rs:254-267`；`TitleBar::window_options()` 默认 CSD | **已修** |
+| 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | **已修** |
+| 60 | 透明窗口示例无 X11/软件渲染环境限制提示 | `window_showcase/README.md:13`；`docs/linux-platform-audit.md:588-589` | **已修** |
 | 61 | `platform.md:185-206` 能力矩阵只列 8 项，给人「其余已对齐」错觉 | 恰好漏掉 `show_native_menu`、`prompt`、托盘 bounds/panel mode、`request_attention`、`window_control_area` 等 | **已修**：矩阵加注「只列已核对 8 项，其余见审计文档」 |
 | 62 | `start_window_move` / `start_window_resize` 文档未提 Wayland 需 MousePress serial | `platform.rs:1331-1334`、`window.rs:2925-2931` | **文档已修**：标注需从鼠标按下上下文触发 |
 | 63 | wayland-only + screen-capture 组合编译失败：`scap` 未转发 `wayland` feature（只有 x11 分支写了 `scap?/x11`） | `crates/rgpui-linux/Cargo.toml:20-36`、`:37-44`；`scap-rs` 自带 `compile_error!` | 已核实：补 `scap?/wayland` 虽能过编译门禁，但会引入 `libpipewire-0.3` 系统库依赖、破坏现有 workspace clippy，故本次未改；需在 CI 能装 pipewire 后单独处理 |

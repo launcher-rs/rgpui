@@ -549,7 +549,12 @@ impl X11Client {
                         client.with_common(|common| common.reduce_motion = reduce_motion);
                     }
                     XDPEvent::CursorTheme(_) | XDPEvent::CursorSize(_) => {
-                        // 无操作，X11 为我们管理这些
+                        // X11 的光标图标在建窗时由 cursor_handle 一次性加载并缓存，
+                        // 此前这里空操作导致系统主题/尺寸变更后应用内光标不更新
+                        // （Wayland 端会更新）。清空缓存让下次取图标时按新设置重建。
+                        let mut state = client.0.borrow_mut();
+                        state.cursor_cache.clear();
+                        state.invisible_cursor_cache = None;
                     }
                 }
             })
