@@ -2227,13 +2227,14 @@ impl X11ClientState {
                 }
             }
             if errors.is_empty() {
+                // errors 为空说明所有名字都试过了、一个都没找到
+                Err(anyhow!("did not find cursor icons {:?}", cursor_icon_names))
+            } else {
                 Err(anyhow!(
                     "errors while loading cursor icons {:?}:\n{}",
                     cursor_icon_names,
                     errors
                 ))
-            } else {
-                Err(anyhow!("did not find cursor icons {:?}", cursor_icon_names))
             }
         };
 
@@ -2729,18 +2730,23 @@ fn get_scale_factor(
                 if valid_scale_factor(scale) {
                     DpiMode::Scale(scale)
                 } else {
-                    panic!(
-                        "`{}` must be a positive normal number or `randr`. Got `{}`",
-                        GPUI_X11_SCALE_FACTOR_ENV, var
+                    // 配置写错不该让应用直接崩；记 warn 后回退到自动探测
+                    log::warn!(
+                        "`{}` must be a positive normal number or `randr`. Got `{}`；回退自动探测",
+                        GPUI_X11_SCALE_FACTOR_ENV,
+                        var
                     );
+                    DpiMode::NotSet
                 }
             } else if var.is_empty() {
                 DpiMode::NotSet
             } else {
-                panic!(
-                    "`{}` must be a positive number or `randr`. Got `{}`",
-                    GPUI_X11_SCALE_FACTOR_ENV, var
+                log::warn!(
+                    "`{}` must be a positive number or `randr`. Got `{}`；回退自动探测",
+                    GPUI_X11_SCALE_FACTOR_ENV,
+                    var
                 );
+                DpiMode::NotSet
             }
         })
         .unwrap_or(DpiMode::NotSet);
