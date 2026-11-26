@@ -10,7 +10,9 @@ static TLS_CONFIG: OnceLock<rustls::ClientConfig> = OnceLock::new();
 pub fn tls_config() -> ClientConfig {
     TLS_CONFIG
         .get_or_init(|| {
-            rustls::crypto::aws_lc_rs::default_provider()
+            // 用 ring 而非 aws-lc-rs：aws-lc-sys 需要 CMake 编译大量 C/汇编，
+            // 是三平台构建的大头；ring 是纯 Rust + 少量汇编，编译更快。
+            rustls::crypto::ring::default_provider()
                 .install_default()
                 .ok();
 
