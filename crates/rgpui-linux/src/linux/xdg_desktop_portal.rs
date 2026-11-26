@@ -43,7 +43,15 @@ impl XDPEventSource {
 
         executor
             .spawn(async move {
-                let settings = Settings::new().await?;
+                // 连不上 portal 时外观 / 光标主题 / 减少动效都会停在默认值；
+                // 原先 `?` 直接结束 future，默认日志级别下用户完全看不到原因。
+                let settings = match Settings::new().await {
+                    Ok(settings) => settings,
+                    Err(error) => {
+                        log::warn!("无法连接 xdg-desktop-portal 设置服务，系统的外观/光标/动效设置将不会同步：{error:#}");
+                        return Ok(());
+                    }
+                };
 
                 if let Ok(initial_appearance) = settings.color_scheme().await {
                     sender.send(Event::WindowAppearance(

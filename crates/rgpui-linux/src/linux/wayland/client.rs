@@ -2168,7 +2168,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                     wl_pointer::Axis::HorizontalScroll => {
                         scroll_delta.x += px(value as f32 * modifier * axis_modifier);
                     }
-                    _ => unreachable!(),
+                    // 未来协议扩展新增轴类型时不能让整个应用崩在滚动事件上
+                    other => log::warn!("忽略未知的 Wayland 滚动轴类型: {other:?}"),
                 }
             }
             wl_pointer::Event::AxisDiscrete {

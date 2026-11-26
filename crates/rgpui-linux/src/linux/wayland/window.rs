@@ -2087,7 +2087,8 @@ impl PlatformWindow for WaylandWindow {
     fn set_exclusive_zone(&self, zone: Pixels) {
         let state = self.borrow();
         let Some(layer_surface) = state.surface_state.layer_surface() else {
-            log::debug!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型");
+            // 请求了保留区域却完全无效，默认日志级别必须看得见
+            log::warn!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型，请求已忽略");
             return;
         };
         layer_surface.set_exclusive_zone(f32::from(zone) as i32);
@@ -2099,7 +2100,7 @@ impl PlatformWindow for WaylandWindow {
     fn set_exclusive_edge(&self, edge: Anchor) {
         let state = self.borrow();
         let Some(layer_surface) = state.surface_state.layer_surface() else {
-            log::debug!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型");
+            log::warn!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型，请求已忽略");
             return;
         };
         layer_surface.set_exclusive_edge(super::layer_shell::wayland_anchor(edge));
