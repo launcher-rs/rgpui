@@ -97,7 +97,7 @@ unsafe fn build_classes() {
             );
             decl.add_method(
                 sel!(applicationShouldHandleReopen:hasVisibleWindows:),
-                should_handle_reopen as extern "C" fn(&mut Object, Sel, id, bool),
+                should_handle_reopen as extern "C" fn(&mut Object, Sel, id, bool) -> BOOL,
             );
             decl.add_method(
                 sel!(applicationWillTerminate:),
@@ -1405,7 +1405,14 @@ extern "C" fn did_finish_launching(this: &mut Object, _: Sel, _: id) {
     }
 }
 
-extern "C" fn should_handle_reopen(this: &mut Object, _: Sel, _: id, has_open_windows: bool) {
+/// AppKit 的 `applicationShouldHandleReopen:hasVisibleWindows:` 返回 `BOOL`。
+/// 此前注册成 `void`，回调返回的是栈上垃圾值，Dock 重开行为不稳定。
+extern "C" fn should_handle_reopen(
+    this: &mut Object,
+    _: Sel,
+    _: id,
+    has_open_windows: bool,
+) -> BOOL {
     if !has_open_windows {
         let platform = unsafe { get_mac_platform(this) };
         let mut lock = platform.0.lock();
@@ -1415,6 +1422,8 @@ extern "C" fn should_handle_reopen(this: &mut Object, _: Sel, _: id, has_open_wi
             platform.0.lock().reopen.get_or_insert(callback);
         }
     }
+    // 让 AppKit 不必再做默认的「新建/恢复窗口」处理 —— 重开逻辑由回调负责
+    NO
 }
 
 extern "C" fn will_terminate(this: &mut Object, _: Sel, _: id) {

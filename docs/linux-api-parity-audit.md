@@ -79,15 +79,15 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 10 | Wayland `primary_display` / `window_stack` 恒 `None`，X11 已实现 | `wayland/client.rs:835-837`、`1082-1084`；`x11/client.rs:1631-1640`、`1944-1984` | 多屏定位、窗口栈枚举类功能在 Wayland 静默失效 | **已修** |
 | 11 | Wayland 权限查询在 portal 有 `GlobalShortcuts` 时返回 `NotDetermined`，但全局热键注册恒失败 | `permissions.rs:126-134`；`wayland/client.rs:530-557`、`platform.rs:112-118` | UI 显示「可申请」，注册总失败或注册后永不触发 | **已修** |
 | 12 | X11 不处理光标主题/大小变更事件，Wayland 会更新 | `x11/client.rs:551-553`；`wayland/client.rs:708-713` | 运行时切主题后应用内光标不更新，后端行为不对等 | **已修** |
-| 13 | X11 `request_frame` 缺失，纯定时动画卡住；Wayland 靠 `commit` 能推进 | `crates/rgpui/src/platform.rs:1404-1410`；`x11/window.rs` 的 `PlatformWindow` 实现 | 同一段动画代码在两个后端表现不同 | 待验证 |
+| 13 | X11 `request_frame` 缺失，纯定时动画卡住；Wayland 靠 `commit` 能推进 | `crates/rgpui/src/platform.rs:1404-1410`；`x11/window.rs` 的 `PlatformWindow` 实现 | 同一段动画代码在两个后端表现不同 | **已修**：X11 覆盖 request_frame → refresh（周期循环仍兜底） |
 | 14 | `focused_window` 只要编了 x11 feature 就无条件连 X11，即使在 Wayland 会话 | `focused_window.rs:17-22` | Wayland + XWayland 下返回 XWayland 客户端信息，不是当前原生窗口 | **已修** |
-| 15 | X11 缩放因子不读 XSettings，RandR 失败直接硬编码 1.0 | `x11/client.rs:2772`、`2766` | XFCE / GNOME X11 下 UI 尺寸偏小或偏大 | 待验证 |
+| 15 | X11 缩放因子不读 XSettings，RandR 失败直接硬编码 1.0 | `x11/client.rs:2772`、`2766` | XFCE / GNOME X11 下 UI 尺寸偏小或偏大 | **文档已修**：Xft.dpi + RandR 兜底，XSettings 读取待做（需引入 XSettings 协议客户端） |
 | 16 | 剪贴板交接给 manager 超时只 warn + `Ok(())` | `x11/clipboard.rs:852-857` | 复制后退出应用，粘贴板变空，调用方无错误 | **已修** |
 | 17 | `rgpui-platform` 的 wayland/x11 feature 在 Linux 上是空操作（依赖硬编码双后端） | `crates/rgpui-platform/Cargo.toml:25-26`、`43-44` | 用户以为关掉了某后端，实际仍编进来；或以为选了 wayland 仍走 X11 | **文档已修** |
-| 18 | 一批 `Platform` 方法持续空实现且无能力查询 | `platform.rs:829-833`、`952`、`802-806`、`824-827`、`544-551` | 最近文档 / dock 跳转列表 / 热状态等 UI 静默无效果 | 待验证 |
+| 18 | 一批 `Platform` 方法持续空实现且无能力查询 | `platform.rs:829-833`、`952`、`802-806`、`824-827`、`544-551` | 最近文档 / dock 跳转列表 / 热状态等 UI 静默无效果 | **部分文档已修**：path_for_auxiliary_executable 等已标注不支持；其余仍需能力查询 API |
 | 19 | X11 `window_controls()` 未覆盖，走默认「四项全支持」 | `crates/rgpui/src/platform.rs:940-949`（`WindowControls::default()` 全 `true`）；X11 `window.rs` 无该方法；Wayland `window.rs:2130` 有真实能力上报 | `TitleBar` 据该值绘制按钮；平铺 WM / 不支持 min/max 的 WM 上会画出点了没反应的按钮（与本轮 #1 同类） | **已修** |
-| 20 | `should_auto_hide_scrollbars` 在 Linux 永远 `false`（字段无写入点） | `crates/rgpui-linux/src/linux/platform.rs:190/245`、`847-848`；对照 Windows `platform.rs:962/1628` | 主题 `scrollbar_show` 恒为 `Hover`，不跟随 GNOME/KDE 系统设置 | 待验证 |
-| 21 | `thermal_state()` 恒 `Nominal`，`on_thermal_state_change` 空 | `crates/rgpui-linux/src/linux/platform.rs:457-461`；对照 macOS `platform.rs:991-1005` | 性能自适应应用永不降级；调用方无法区分「真正常」与「不支持」 | 待验证 |
+| 20 | `should_auto_hide_scrollbars` 在 Linux 永远 `false`（字段无写入点） | `crates/rgpui-linux/src/linux/platform.rs:190/245`、`847-848`；对照 Windows `platform.rs:962/1628` | 主题 `scrollbar_show` 恒为 `Hover`，不跟随 GNOME/KDE 系统设置 | **待做**：需 GNOME/KDE 设置键监听，无标准 freedesktop 键 |
+| 21 | `thermal_state()` 恒 `Nominal`，`on_thermal_state_change` 空 | `crates/rgpui-linux/src/linux/platform.rs:457-461`；对照 macOS `platform.rs:991-1005` | 性能自适应应用永不降级；调用方无法区分「真正常」与「不支持」 | **待做**：sysfs hwmon 阈值映射因硬件而异，需定义口径后再实现 |
 | 22 | Wayland `set_position()` 只改内部 geometry，合成器可不尊重 | `wayland/window.rs:1681-1705`（源码注释已承认） | 记忆窗口位置 / 多窗口布局在 Wayland 上出现偏差，API 无能力提示 | **文档已修**（trait 与 Window 包装标注 Wayland 尽力而为 / macOS 空操作） |
 | 23 | Wayland `focused_window_info()` 恒 `None` | `focused_window.rs:20-24` | 无法区分「Wayland 不支持」与「当前无焦点窗口」 | **文档已修**（trait 与 macOS 侧现状均已标注） |
 | 24 | `show_window_menu` 注释称「Wayland 和 X11」，实际有强前置条件 | `window.rs:2900-2903`；X11 `window.rs:2315-2348` 只认 GTK 的 `_GTK_SHOW_WINDOW_MENU`；Wayland `window.rs:2009-2019` 需 MousePress serial | 右键标题栏在 KDE/i3/多数 Wayland 合成器无菜单，且无法区分「不支持」与「没点」 | **文档已修**（GTK WM 约定 / MousePress serial） |
@@ -129,8 +129,8 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 52 | 剪贴板不支持的转换目标 / 缺 selection owner 时只 warn + `return` | `x11/clipboard.rs:362/379`；`wayland/client.rs:1022-1049` | **部分已修**：Wayland 写入缺管理器时记 warn；X11 格式回退仍只 trace |
 | 53 | X11 光标加载失败日志分支条件写反（误导排查方向） | `x11/client.rs:2229-2236` | **已修** |
 | 54 | Wayland `wl_pointer::Axis` 未知值 `unreachable!()` | `wayland/client.rs:2166/2193/2209/2221` | **已修** |
-| 55 | XIM preedit 的下划线/高亮/选中反馈属性被忽略，只传纯文本 | `x11/xim_handler.rs:141` | 待验证 |
-| 56 | 多 seat 只取第一个，`// TODO: Multi seat support` | `wayland/client.rs:236`、`576-582`、`649` | 待验证 |
+| 55 | XIM preedit 的下划线/高亮/选中反馈属性被忽略，只传纯文本 | `x11/xim_handler.rs:141` | **待做**：需解析 XIM feedback 属性并接线到绘制层 |
+| 56 | 多 seat 只取第一个，`// TODO: Multi seat support` | `wayland/client.rs:236`、`576-582`、`649` | **待做**：需把 seat 改为集合并按事件源分派 |
 | 57 | `examples/README.md:59` 把 `set_menus` 简写为「原生菜单」 | 示例自身已如实说明 Windows/Linux 只存储不渲染，README 没同步 | **已修** |
 | 58 | `window_showcase` 的 Hide Titlebar 按钮在 Wayland / CSD 下必然无效 | `examples/window_showcase/src/bin/window.rs:254-267`；`TitleBar::window_options()` 默认 CSD | **已修** |
 | 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | **已修** |
@@ -199,7 +199,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 |---|------|------|------|------|
 | M1 | 默认 feature 下 macOS 完全没有文字渲染：`font-kit` 非默认，`MacPlatform::new` 只装 `NoopTextSystem` 并记一条默认级别不可见的 warn | `macos/platform.rs:212-223`；`rgpui-platform/Cargo.toml:17/19` | 窗口能开、矩形能画，但所有文本为空 | **已修**：`rgpui-platform` 默认开启 `font-kit`（需 macOS CI 验证运行时） |
 | M2 | `App::set_tray(Tray, menus)` 在 macOS 完全无实现（icon/menu/tooltip 有，聚合入口没有），菜单项 Action 丢失 | `app.rs:2694`；`macos/platform.rs` 的 `impl Platform` 无 `set_tray` | 托盘只出图标，菜单和动作全失效 | 待修 |
-| M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | 待修 |
+| M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | **已修**（需 macOS 真机/CI 验证） |
 | M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | 待修 |
 | M5 | `InputMonitoring` 权限借用辅助功能状态，`request_permission` 也不请求输入监控 | `macos/permissions.rs:60-82`；`platform.rs:1233-1242` | UI 误报授权状态，请求静默无操作 | 待修 |
 | M6 | `start_window_move()` 同步跑 AppKit 模态拖拽循环，落在 `Rc<RefCell<App>>` 借用窗口内 | `macos/window.rs:1889-1898`；core `title_bar.rs:347-352` | 拖动标题栏时可能 borrowed 冲突 panic 或丢事件 | 待修 |
@@ -222,7 +222,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | M18 | `gpu_specs()` 恒 `None`，且 core 文档错写「Mac 和 Windows 上返回 None」（Windows 已实现） | `macos/window.rs:1812-1814`；core `window.rs:6655` | **文档已修**，macOS 侧实现仍待做 |
 | M19 | `selectNextTab:` / `selectPreviousTab:` 覆盖后没调 `super`，原生 tabGroup 高亮不同步 | `macos/window.rs:3218-3236` | 待修 |
 | M20 | 托盘面板模式 / 图标边界在 macOS 无实现，文档与技能写成通用能力（button.frame 其实可取边界） | `platform.rs:504-508`；`app.rs:2713-2734`；`tray.md:100-102` | 待修 |
-| M21 | `MacDisplay::all()` 硬编码 32 个显示器上限，失败即 panic | `macos/display.rs:49-66` | 待修 |
+| M21 | `MacDisplay::all()` 硬编码 32 个显示器上限，失败即 panic | `macos/display.rs:49-66` | **已修**（需 macOS 真机/CI 验证） |
 | M22 | `network_status()` 把 `getifaddrs` 失败当成「断网」 | `macos/system_info.rs:46-61` | 待修 |
 
 ### 低（摘要）

@@ -2251,6 +2251,16 @@ impl PlatformWindow for X11Window {
         self.0.state.borrow().fullscreen
     }
 
+    // X11 有周期刷新循环兜底（x11/client.rs 的 start_refresh_loop），但核心的
+    // request_frame() 此前走 trait 默认空实现，纯定时动画只能等下一次周期刷新。
+    // 这里把请求转成一次强制刷新，让动画按请求的节奏推进，与 Wayland 对齐。
+    fn request_frame(&self) {
+        self.0.refresh(RequestFrameOptions {
+            require_presentation: false,
+            force_render: false,
+        });
+    }
+
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
         self.0.callbacks.borrow_mut().request_frame = Some(callback);
     }
