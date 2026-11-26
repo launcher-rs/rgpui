@@ -516,6 +516,9 @@ pub trait Platform: 'static {
     fn on_tray_menu_action(&self, _callback: Box<dyn FnMut(SharedString)>) {}
 
     /// 注册全局系统快捷键，`id` 用于标识快捷键，`keystroke` 定义按键组合。
+    ///
+    /// 注意：trait 默认实现返回 `Ok(())` 但什么都不做。未覆盖此方法的后端会
+    /// 「注册成功」却永远收不到按键；Wayland 会如实返回不支持的错误。
     fn register_global_hotkey(&self, _id: u32, _keystroke: &Keystroke) -> Result<()> {
         Ok(())
     }
@@ -525,11 +528,17 @@ pub trait Platform: 'static {
     fn on_global_hotkey(&self, _callback: Box<dyn FnMut(u32)>) {}
 
     /// 显示系统通知，返回 `Ok(())` 表示通知已发送。
+    ///
+    /// trait 默认实现返回 `Ok(())` 但什么都不做（1.4.1 批量修过一批这类
+    /// 「假实现」）。Linux 无头构建会如实报错；调用方不能只看 `Ok` 判断送达。
     fn show_notification(&self, _title: &str, _body: &str) -> Result<()> {
         Ok(())
     }
 
     /// 设置开机自启动，`app_id` 为应用唯一标识。
+    ///
+    /// trait 默认实现返回 `Ok(())` 但什么都不做；`is_auto_launch_enabled` 同理
+    /// 恒返回 `false`。未覆盖的后端上不要据此判断自启已生效。
     fn set_auto_launch(&self, _app_id: &str, _enabled: bool) -> Result<()> {
         Ok(())
     }
@@ -539,6 +548,10 @@ pub trait Platform: 'static {
     }
 
     /// 返回当前系统中获得焦点的窗口信息（标题、进程名等）。
+    ///
+    /// Wayland 原生会话恒为 `None`（没有读取其它客户端窗口信息的协议），
+    /// 调用方无法区分「不支持」与「当前没有焦点窗口」。macOS 当前只提供
+    /// app_name / bundle_id / pid，`window_title` 为空。
     fn focused_window_info(&self) -> Option<FocusedWindowInfo> {
         None
     }

@@ -89,7 +89,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 20 | `should_auto_hide_scrollbars` 在 Linux 永远 `false`（字段无写入点） | `crates/rgpui-linux/src/linux/platform.rs:190/245`、`847-848`；对照 Windows `platform.rs:962/1628` | 主题 `scrollbar_show` 恒为 `Hover`，不跟随 GNOME/KDE 系统设置 | 待验证 |
 | 21 | `thermal_state()` 恒 `Nominal`，`on_thermal_state_change` 空 | `crates/rgpui-linux/src/linux/platform.rs:457-461`；对照 macOS `platform.rs:991-1005` | 性能自适应应用永不降级；调用方无法区分「真正常」与「不支持」 | 待验证 |
 | 22 | Wayland `set_position()` 只改内部 geometry，合成器可不尊重 | `wayland/window.rs:1681-1705`（源码注释已承认） | 记忆窗口位置 / 多窗口布局在 Wayland 上出现偏差，API 无能力提示 | **文档已修**（trait 与 Window 包装标注 Wayland 尽力而为 / macOS 空操作） |
-| 23 | Wayland `focused_window_info()` 恒 `None` | `focused_window.rs:20-24`；对照 X11 同文件 `:26+` | 无法区分「Wayland 不支持」与「当前无焦点窗口」 | 待验证 |
+| 23 | Wayland `focused_window_info()` 恒 `None` | `focused_window.rs:20-24` | 无法区分「Wayland 不支持」与「当前无焦点窗口」 | **文档已修**（trait 与 macOS 侧现状均已标注） |
 | 24 | `show_window_menu` 注释称「Wayland 和 X11」，实际有强前置条件 | `window.rs:2900-2903`；X11 `window.rs:2315-2348` 只认 GTK 的 `_GTK_SHOW_WINDOW_MENU`；Wayland `window.rs:2009-2019` 需 MousePress serial | 右键标题栏在 KDE/i3/多数 Wayland 合成器无菜单，且无法区分「不支持」与「没点」 | 待验证 |
 | 25 | `Dialog` 遮罩层也挂了 `window_control_area(Drag)`，Linux 无效 | `dialog/dialog.rs:486`（与 #1 同源） | Windows 上点遮罩会被系统当拖拽，Linux 只走点击关闭，行为分叉 | 已核实 |
 | 26 | `appears_transparent` / `traffic_light_position` / `app_owns_titlebar_drag` 在 Linux 被丢弃，且后者文档误写「macOS 专用」 | `platform.rs:2395-2400`、`2242-2244`；X11 `window.rs:731-754`、Wayland `window.rs:538` 只读 `title`；`app_owns_titlebar_drag` 实际 Windows 也用（`rgpui-windows/src/window.rs:503`） | 照抄 `TitleBar::window_options()` 的调用者带着三个 Linux 无意义字段，且文档口径自相矛盾 | 已核实 |
@@ -136,7 +136,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | 已核实 |
 | 60 | 透明窗口示例无 X11/软件渲染环境限制提示 | `window_showcase/README.md:13`；`docs/linux-platform-audit.md:588-589` | 待验证 |
 | 61 | `platform.md:185-206` 能力矩阵只列 8 项，给人「其余已对齐」错觉 | 恰好漏掉 `show_native_menu`、`prompt`、托盘 bounds/panel mode、`request_attention`、`window_control_area` 等 | **已修**：矩阵加注「只列已核对 8 项，其余见审计文档」 |
-| 62 | `start_window_move` / `start_window_resize` 文档未提 Wayland 需 MousePress serial | `platform.rs:1331-1334`、`window.rs:2925-2931`；`wayland/window.rs:2022-2038` | 待验证 |
+| 62 | `start_window_move` / `start_window_resize` 文档未提 Wayland 需 MousePress serial | `platform.rs:1331-1334`、`window.rs:2925-2931` | **文档已修**：标注需从鼠标按下上下文触发 |
 | 63 | wayland-only + screen-capture 组合编译失败：`scap` 未转发 `wayland` feature（只有 x11 分支写了 `scap?/x11`） | `crates/rgpui-linux/Cargo.toml:20-36`、`:37-44`；`scap-rs` 自带 `compile_error!` | 已核实：补 `scap?/wayland` 虽能过编译门禁，但会引入 `libpipewire-0.3` 系统库依赖、破坏现有 workspace clippy，故本次未改；需在 CI 能装 pipewire 后单独处理 |
 
 ---

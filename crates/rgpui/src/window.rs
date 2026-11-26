@@ -2917,7 +2917,11 @@ impl Window {
         self.platform_window.zoom();
     }
 
-    /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）
+    /// 打开原生标题栏上下文菜单，在实现客户端装饰时很有用（Wayland 和 X11）。
+    ///
+    /// **有平台前置条件**：X11 发的是 `_GTK_SHOW_WINDOW_MENU` 客户端消息，只有
+    /// GTK 系 WM（如 mutter）认，KDE / i3 等直接忽略；Wayland 需要鼠标按下取得的
+    /// serial，从定时器或键盘事件调用会被合成器丢弃。两种方式都可能「什么都没发生」。
     pub fn show_window_menu(&self, position: Point<Pixels>) {
         self.platform_window.show_window_menu(position)
     }
@@ -2945,6 +2949,8 @@ impl Window {
     /// 处理 Linux 和 macOS 的窗口移动。
     /// 告诉合成器控制窗口移动（Wayland 和 X11）
     ///
+    /// Wayland 需要鼠标按下时的 serial；从非鼠标按下上下文调用会被合成器忽略，
+    /// 所以应从 `on_mouse_down` / `on_mouse_move` 状态机里触发（框架 `TitleBar` 如此）。
     /// 在移动操作期间可能不会接收到事件。
     pub fn start_window_move(&self) {
         self.platform_window.start_window_move()
@@ -3013,6 +3019,7 @@ impl Window {
     }
 
     /// 在平台级别将窗口标记为脏。
+    /// **仅 macOS 有效**（标题栏脏标记）；Linux / Windows 为空操作。
     pub fn set_window_edited(&mut self, edited: bool) {
         self.platform_window.set_edited(edited);
     }
@@ -3032,6 +3039,7 @@ impl Window {
     }
 
     /// 显示平台字符调色板。
+    /// **仅 macOS 有效**；Linux / Windows 为空操作，需要时自行实现元素级字符面板。
     pub fn show_character_palette(&self) {
         self.platform_window.show_character_palette();
     }
