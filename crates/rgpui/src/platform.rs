@@ -1402,6 +1402,10 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
 
     /// 请求用户注意力（任务栏闪烁/弹跳，提示用户查看窗口）。
+    ///
+    /// 只有 X11 真正实现（ICCM `WM_HINTS` urgency 位）；Wayland 无对应协议、
+    /// Windows 与 macOS 也未实现，走默认空操作。需要跨端提示时请改用
+    /// `App::show_notification`。
     fn request_attention(&self) {}
 
     /// 请求再出一帧（即使窗口当前没有失效区域）。
@@ -1418,6 +1422,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn request_frame(&self) {}
 
     /// 设置窗口在屏幕上的位置。
+    ///
+    /// X11 / Windows 会真正设置；Wayland 只改内部 geometry，合成器可不尊重该请求；
+    /// macOS 当前为空操作。调用方不应假定位置一定生效。
     fn set_position(&mut self, _position: Point<Pixels>) {}
 
     /// 隐藏窗口（从任务栏移除，托盘模式下使用）。

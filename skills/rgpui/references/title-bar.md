@@ -34,7 +34,7 @@ cx.open_window(
 )
 ```
 
-示例：`cargo run -p showcase --bin title_bar`（若存在）/ `hello_world` 等基础示例。
+示例：`cargo run -p window_showcase --bin custom_title_bar`（真实的自绘标题栏示例）。
 
 ## TitleBar
 
@@ -46,7 +46,7 @@ cx.open_window(
 | `new` | `fn new() -> Self` | `:36` |
 | `title_bar_options` | `fn title_bar_options() -> TitlebarOptions` | `:45` |
 | `window_options` | `fn window_options() -> WindowOptions` | `:66` |
-| `on_close_window` | `fn on_close_window(handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self` | `:88` |
+| `on_close_window` | `fn on_close_window(handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self` | `:88`（**仅 Linux 生效**，其它平台无作用） |
 
 `TitleBar::new()` 支持 `ParentElement::child`（`:292`）挂子元素（标题、按钮等）。
 `ControlIcon`（`:113`）与 `WindowControls`（`:257`）为内部窗口控制按钮。

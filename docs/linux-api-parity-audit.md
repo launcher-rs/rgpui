@@ -88,7 +88,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 19 | X11 `window_controls()` 未覆盖，走默认「四项全支持」 | `crates/rgpui/src/platform.rs:940-949`（`WindowControls::default()` 全 `true`）；X11 `window.rs` 无该方法；Wayland `window.rs:2130` 有真实能力上报 | `TitleBar` 据该值绘制按钮；平铺 WM / 不支持 min/max 的 WM 上会画出点了没反应的按钮（与本轮 #1 同类） | 已核实 |
 | 20 | `should_auto_hide_scrollbars` 在 Linux 永远 `false`（字段无写入点） | `crates/rgpui-linux/src/linux/platform.rs:190/245`、`847-848`；对照 Windows `platform.rs:962/1628` | 主题 `scrollbar_show` 恒为 `Hover`，不跟随 GNOME/KDE 系统设置 | 待验证 |
 | 21 | `thermal_state()` 恒 `Nominal`，`on_thermal_state_change` 空 | `crates/rgpui-linux/src/linux/platform.rs:457-461`；对照 macOS `platform.rs:991-1005` | 性能自适应应用永不降级；调用方无法区分「真正常」与「不支持」 | 待验证 |
-| 22 | Wayland `set_position()` 只改内部 geometry，合成器可不尊重 | `wayland/window.rs:1681-1705`（源码注释已承认） | 记忆窗口位置 / 多窗口布局在 Wayland 上出现偏差，API 无能力提示 | 待验证 |
+| 22 | Wayland `set_position()` 只改内部 geometry，合成器可不尊重 | `wayland/window.rs:1681-1705`（源码注释已承认） | 记忆窗口位置 / 多窗口布局在 Wayland 上出现偏差，API 无能力提示 | **文档已修**（trait 与 Window 包装标注 Wayland 尽力而为 / macOS 空操作） |
 | 23 | Wayland `focused_window_info()` 恒 `None` | `focused_window.rs:20-24`；对照 X11 同文件 `:26+` | 无法区分「Wayland 不支持」与「当前无焦点窗口」 | 待验证 |
 | 24 | `show_window_menu` 注释称「Wayland 和 X11」，实际有强前置条件 | `window.rs:2900-2903`；X11 `window.rs:2315-2348` 只认 GTK 的 `_GTK_SHOW_WINDOW_MENU`；Wayland `window.rs:2009-2019` 需 MousePress serial | 右键标题栏在 KDE/i3/多数 Wayland 合成器无菜单，且无法区分「不支持」与「没点」 | 待验证 |
 | 25 | `Dialog` 遮罩层也挂了 `window_control_area(Drag)`，Linux 无效 | `dialog/dialog.rs:486`（与 #1 同源） | Windows 上点遮罩会被系统当拖拽，Linux 只走点击关闭，行为分叉 | 已核实 |
@@ -100,11 +100,11 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 31 | `gpu_specs` 文档与实现相反 | `window.rs:6633-6637` 写「Mac 和 Windows 上返回 None」，但三个 Linux 后端都实现了（`x11/window.rs:2491`、`wayland/window.rs:2151`、`headless/window.rs:228`） | 文档误导，应用可能因此跳过 Linux 的 GPU 信息展示 | 已核实 |
 | 32 | `map_window` 在 Wayland 走默认 `Ok(())`，文档未说明 | `platform.rs:1343-1346`；Wayland 无 override（建窗时 `surface.commit()` 已隐式映射） | 调用方无法区分「已映射」与「平台隐式完成」，排障时误导 | 已核实 |
 | 33 | `Platform` 默认实现 rustdoc 把「返回 `Ok(())` / 空值」写成成功 —— 1.4.1 假实现模式残留 | `platform.rs:514-526`、`528-535`（`register_global_hotkey` / `show_notification` / `set_auto_launch` 默认 `Ok(())` 但什么都没做） | 任何未 override 的后端都会骗调用方；这是本轮一大批问题的**系统性根源** | 已核实 |
-| 34 | 技能索引没有 Linux 入口，只有 Windows 平台条目 | `skills/rgpui/SKILL.md:6-54/77-84`；`readme.md:144-151` 未链接 `docs/linux-platform-audit.md` | 1600+ 行的 Linux 审计文档对加载技能的调用者完全不可发现，**放大本清单每一条** | 已核实 |
+| 34 | 技能索引没有 Linux 入口，只有 Windows 平台条目 | `skills/rgpui/SKILL.md:6-54/77-84`；`readme.md:144-151` 未链接 `docs/linux-platform-audit.md` | Linux 审计文档对加载技能的调用者完全不可发现，**放大本清单每一条** | **已修**：SKILL.md 导航与附录新增 Linux/macOS 审计入口 |
 | 35 | 托盘技能把 `set_tray_panel_mode` / `tray_icon_bounds` 写成可用 | `skills/rgpui/references/tray.md:100-102/162-163`；`app.rs:2713-2734`；Linux `platform.rs:433-441`（Ubuntu host 忽略）、`get_tray_icon_bounds` 恒 `None` | 「托盘图标下方定位窗口」在 Linux 直接失效 | 已核实 |
 | 36 | `TrayIconEvent` 文档按 Windows/macOS 语义写，Ubuntu 主机实际不同 | `tray.md:38-42/93`；`system/tray.rs:9-16`；SNI `tray_sni.rs:120/129` | Ubuntu/appindicators：左键打开菜单、**双击**才触发 `Activate`、右键永不产出 `LeftClick` | 已核实 |
-| 37 | `title-bar.md` 未标 `on_close_window` 为 Linux-only，且示例指向不存在的 bin | `title-bar.md:49/37`；`title_bar.rs:85-95` 明写 Linux-only；真实示例是 `window_showcase --bin custom_title_bar` | 标题栏入门者照抄无效 API / 跑不存在的命令 | 已核实 |
-| 38 | 剪贴板技能表未标 `find_pasteboard` 仅 macOS、`primary` 仅 Linux/FreeBSD | `platform.md:48`；`app.rs:1541-1570` 的 cfg 门控 | Linux 上调用 `find_pasteboard` 直接编译失败 | 已核实 |
+| 37 | `title-bar.md` 未标 `on_close_window` 为 Linux-only，且示例指向不存在的 bin | `title-bar.md:49/37` | 标题栏入门者照抄无效 API / 跑不存在的命令 | **已修**：标注 Linux-only，示例改为 `window_showcase --bin custom_title_bar` |
+| 38 | 剪贴板技能表未标 `find_pasteboard` 仅 macOS、`primary` 仅 Linux/FreeBSD | `platform.md:48` | Linux 上调用 `find_pasteboard` 直接编译失败 | **已修** |
 | 39 | `window_decorations` 文档写「仅 Wayland」，实际 X11 已实现且 `TitleBar` 在 Linux 默认开 CSD | `platform.rs:2232-2234`；`window.rs:2477-2479`；X11 `window.rs:2437-2467`；`title_bar.rs:79-81` | 文档口径与实现不一致，调用者误判适用范围 | 已核实 |
 | 40 | `docs/linux-platform-audit.md` 自身「已知问题清单」过期 | 该文件 `:3`、`:922-949` 列了 `show_dialog` / `on_media_key_event` / `read_write_find_pasteboard` 等 | 其中多项已在 1.5.0 删除（`CHANGELOG.md:463-466`），照它排查会去找不存在的接口 | 已核实 |
 | 41 | `docs/rgpui-book` 窗口管理 / 入门 / 托盘三章 API 全面过期 | `01-getting-started.md:8/20-25/31-45`、`07-window-management.md:7-11/17-45/152-166/203-243` | `Window::default()` / `App::new()` / `gpui::blue()` 等当前 API 下任何平台都编译不过 | 已核实 |
@@ -135,7 +135,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 58 | `window_showcase` 的 Hide Titlebar 按钮在 Wayland / CSD 下必然无效 | `examples/window_showcase/src/bin/window.rs:254-267`；`TitleBar::window_options()` 默认 CSD | 待验证 |
 | 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | 已核实 |
 | 60 | 透明窗口示例无 X11/软件渲染环境限制提示 | `window_showcase/README.md:13`；`docs/linux-platform-audit.md:588-589` | 待验证 |
-| 61 | `platform.md:185-206` 能力矩阵只列 8 项，给人「其余已对齐」错觉 | 恰好漏掉本清单的 `show_native_menu`、`prompt`、托盘 bounds/panel mode、`request_attention`、`window_control_area` 等 | 已核实 |
+| 61 | `platform.md:185-206` 能力矩阵只列 8 项，给人「其余已对齐」错觉 | 恰好漏掉 `show_native_menu`、`prompt`、托盘 bounds/panel mode、`request_attention`、`window_control_area` 等 | **已修**：矩阵加注「只列已核对 8 项，其余见审计文档」 |
 | 62 | `start_window_move` / `start_window_resize` 文档未提 Wayland 需 MousePress serial | `platform.rs:1331-1334`、`window.rs:2925-2931`；`wayland/window.rs:2022-2038` | 待验证 |
 | 63 | wayland-only + screen-capture 组合编译失败：`scap` 未转发 `wayland` feature（只有 x11 分支写了 `scap?/x11`） | `crates/rgpui-linux/Cargo.toml:20-36`、`:37-44`；`scap-rs` 自带 `compile_error!` | 已核实：补 `scap?/wayland` 虽能过编译门禁，但会引入 `libpipewire-0.3` 系统库依赖、破坏现有 workspace clippy，故本次未改；需在 CI 能装 pipewire 后单独处理 |
 

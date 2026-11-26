@@ -6354,6 +6354,9 @@ impl Window {
     }
 
     /// 请求操作系统引起对此窗口的注意。
+    ///
+    /// 目前只有 X11 真正实现；Wayland / Windows / macOS 是空操作。需要跨端
+    /// 提示用户时请改用 `App::show_notification`。
     pub fn request_attention(&self) {
         self.platform_window.request_attention();
     }
@@ -6374,6 +6377,9 @@ impl Window {
     }
 
     /// 在屏幕坐标中设置窗口位置。
+    ///
+    /// X11 / Windows 会真正移动；Wayland 是「尽力而为」，合成器可忽略；macOS
+    /// 当前为空操作。需要精确定位时请检查平台是否支持。
     pub fn set_position(&mut self, position: Point<Pixels>) {
         self.platform_window.set_position(position);
     }
