@@ -2215,13 +2215,18 @@ pub struct WindowOptions {
     /// 要创建的窗口类型
     pub kind: WindowKind,
 
-    /// 窗口是否可被用户拖拽移动
+    /// 窗口是否可被用户拖拽移动。
+    /// Windows 用窗口样式落地；X11 写入 Motif functions 位（尊重它的 WM 生效）；
+    /// Wayland 没有禁止移动的协议，`false` 仅用于让框架收敛标题栏交互。
     pub is_movable: bool,
 
-    /// 窗口是否可被用户调整大小
+    /// 窗口是否可被用户调整大小。
+    /// Windows / X11 会真正阻止缩放，Wayland 尽力而为（协议不提供强制禁用）。
     pub is_resizable: bool,
 
-    /// 窗口是否可被用户最小化
+    /// 窗口是否可被用户最小化。
+    /// Windows / X11 会真正阻止最小化，Wayland 尽力而为。
+    /// 三个平台都会让 `window_controls()` 收敛对应按钮，不画出点不动的按钮。
     pub is_minimizable: bool,
 
     /// 在哪个显示器上创建窗口，若为 None，

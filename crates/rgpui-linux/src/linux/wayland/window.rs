@@ -135,7 +135,11 @@ pub struct WaylandWindowState {
     in_progress_configure: Option<InProgressConfigure>,
     resize_throttle: bool,
     in_progress_window_controls: Option<WindowControls>,
+    /// 合成器上报的能力（WmCapabilities）
     window_controls: WindowControls,
+    /// 应用请求的能力：与合成器能力取交集后对外报告，避免画出点了没反应的按钮
+    is_resizable: bool,
+    is_minimizable: bool,
     client_inset: Option<Pixels>,
     accesskit_adapter: Option<accesskit_unix::Adapter>,
 }
@@ -587,6 +591,8 @@ impl WaylandWindowState {
             renderer_presented: false,
             in_progress_window_controls: None,
             window_controls: WindowControls::default(),
+            is_resizable: options.is_resizable,
+            is_minimizable: options.is_minimizable,
             client_inset: None,
             accesskit_adapter: None,
         })
@@ -2131,7 +2137,12 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn window_controls(&self) -> WindowControls {
-        self.borrow().window_controls
+        let state = self.borrow();
+        WindowControls {
+            maximize: state.window_controls.maximize && state.is_resizable,
+            minimize: state.window_controls.minimize && state.is_minimizable,
+            ..state.window_controls
+        }
     }
 
     fn set_client_inset(&self, inset: Pixels) {

@@ -67,7 +67,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 3 | Wayland 宣称支持屏幕捕获，实际 `screen_capture_sources()` 直接返回「not yet implemented」 | `crates/rgpui-linux/src/linux/platform.rs:75-77`；`wayland/client.rs:838-855` | `App::is_screen_capture_supported()` 暴露给 UI 为 true，点击后列表空/报错 | **已修复**（见下） |
 | 4 | Wayland 启动期多处硬 `unwrap!` / 低版本 `panic!` | `wayland/client.rs:649`、`562/564`、`530-557` | 无 `wl_seat`、老合成器、连接失败时直接崩溃，不回退其它后端或 headless | **已修复**（见下） |
 | 5 | `on_open_urls` 回调在 Linux 只存不派发 | `crates/rgpui-linux/src/linux/platform.rs:593-596`；对照 macOS `platform.rs:1471-1492` | 注册 URL scheme 返回 `Ok`，但以该 scheme 启动应用时回调永不触发 | **已修复**（见下）。注：`on_reopen` 经复核**不是缺陷**——`App::on_reopen` rustdoc 已限定 macOS，Linux/Windows 不派发符合契约 |
-| 6 | `WindowOptions::is_movable` / `is_resizable` / `is_minimizable` 在 Linux 建窗时从不读取 | 定义 `platform.rs:2210-2217`；核心转发 `window.rs:1522-1526`、`2107-2108`；X11 `window.rs:601/731/961/976/1037/1144`、Wayland `window.rs:285/538/746` 均未读；对照 Windows `rgpui-windows/src/window.rs:508-521` 真设 WS 位 | 设 `is_minimizable: false` 的窗口在 Linux 仍显示并响应最小化/最大化按钮，直接违反应用意图；`is_movable: false` 完全无效 | 已核实 |
+| 6 | `WindowOptions::is_movable` / `is_resizable` / `is_minimizable` 在 Linux 建窗时从不读取 | 定义 `platform.rs:2210-2217`；核心转发 `window.rs:1522-1526`、`2107-2108`；X11 `window.rs:601/731/961/976/1037/1144`、Wayland `window.rs:285/538/746` 均未读；对照 Windows `rgpui-windows/src/window.rs:508-521` 真设 WS 位 | 设 `is_minimizable: false` 的窗口在 Linux 仍显示并响应最小化/最大化按钮，直接违反应用意图；`is_movable: false` 完全无效 | **已修复**（见下；min/max size hints 仍未做，见备注） |
 | 7 | 装饰模式双向静默回退：Wayland `Server→Client`、X11 `Client→Server` | `wayland/window.rs:2118-2126`（只 `log::info!`）；`x11/window.rs:2440-2447`；`window_decorations()` 在 X11 恒 `Server`（`:2364-2367`） | 这正是 RuTerm 踩坑的第二层根因：请求与实际生效不一致，调用方查不到真实值；X11 无合成器时「原生框架 + 自绘标题栏」重复 | 已核实 |
 | 8 | README 虚报「媒体键、生物识别」支持，对应 API 已在 1.5.0 删除 | `readme.md:85`；`CHANGELOG.md:463-466` | 明面上的功能虚报，Linux 读者会去找根本不存在的接口 | 已核实 |
 | 9 | README / 入门文档宣称 Linux 支持，却不提 feature 门控与构建前置 | `readme.md:8/96/144-151`；`docs/rgpui-book/01-getting-started.md:8/20-25`；根 `Cargo.toml:30` + `crates/rgpui/Cargo.toml:47/49` | 直接依赖 `rgpui` 的下游会「编译成功、无窗口、零报错」（静默 Headless）；缺 glib/gtk/webkit 时 workspace 构建失败 | 已核实 |
@@ -182,7 +182,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | 3 | Wayland 屏幕撒谎 | `LinuxClient` 默认改为 `false`，Wayland 显式覆盖 `false`（与 X11 的 `true` 对称）；headless 也不再虚报 | 默认 + screen-capture / x11 + screen-capture 编译 + clippy + guards | **已完成** |
 | 4 | Wayland 启动期硬 panic | `WaylandClient::new()` 改返回 `anyhow::Result`：连接/绑定/事件源注册失败用 `?` 或显式错误；`wl_seat_version` / `wl_output_version` 版本不足返回 `None` 跳过 global 而非 panic；`current_platform` 收到 Err 后回退 X11 / headless | workspace clippy + guards + Wayland 会话示例启动 | **已完成** |
 | 5 | URL scheme 回调不派发 | 从 argv 提取 scheme URL（跳过 argv[0]，排除开关/路径/盘符），注册回调时重放；取回调出借用后再调用避免 RefCell 重入；补纯函数单测；core trait 文档标注各平台派发方式 | `startup_urls_only_accepts_scheme_urls` 单测 + clippy + guards | **已完成** |
-| 6 | `is_movable` / `is_resizable` / `is_minimizable` 被丢弃 | X11 用 `_MOTIF_WM_HINTS` functions 位 + min/max size hints 落地；`window_controls()` 反映真实值；Wayland 文档化尽力而为 | 建窗后读属性 + 按钮可见性验证 | 待开始 |
+| 6 | `is_movable` / `is_resizable` / `is_minimizable` 被丢弃 | X11 把三个标志写进 Motif functions 位（关闭位恒开），并覆盖 `window_controls()`；Wayland 把应用标志与合成器上报能力取交集；`WindowOptions` 文档标注各平台落地程度；补 4 条 Motif 单测。min/max size hints 仍待做（X11 上 `is_resizable: false` 时还应写 WM_SIZE_HINTS 的 min=max=初始尺寸） | 4 条 `motif` 单测 + workspace clippy + guards | **已完成（部分）** |
 | 7 | 装饰模式双向静默回退 | `window_decorations()` 暴露协商后的真实值；回退日志从 info 提到 warn；同步包装层文档 | Wayland/X11 两种组合的窗口外观验证 | 待开始 |
 | … | （其余见第二节） | | | |
 
