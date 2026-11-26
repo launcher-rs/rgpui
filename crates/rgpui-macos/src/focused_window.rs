@@ -66,6 +66,8 @@ pub fn get_focused_window_info() -> Option<FocusedWindowInfo> {
 /// 获取最前台窗口标题（通过 AXUIElement，需辅助功能权限）。
 /// 取不到时返回空字符串 —— 调用方应把它当作「标题未知」而非「没有窗口」。
 fn get_frontmost_window_title() -> String {
+    use core_foundation::base::TCFType as _;
+
     unsafe {
         let workspace_class = Class::get("NSWorkspace").unwrap();
         let workspace: id = msg_send![workspace_class, sharedWorkspace];
@@ -83,18 +85,27 @@ fn get_frontmost_window_title() -> String {
             return String::new();
         }
 
+        // AX 属性名常量在部分 macOS SDK / deployment target 下不会作为可链接符号导出
+        // （CI 上就报 _kAXFocusedWindowAttribute / _kAXTitleAttribute undefined）。
+        // 这些常量本身就是固定的 CFString 字面量，直接构造即可，不依赖链接器符号。
         let mut focused_window: CFTypeRef = std::ptr::null();
-        let focused_attr = ax::kAXFocusedWindowAttribute;
-        let status =
-            ax::AXUIElementCopyAttributeValue(app_element, focused_attr, &mut focused_window);
+        let focused_attr = core_foundation::string::CFString::new("AXFocusedWindow");
+        let status = ax::AXUIElementCopyAttributeValue(
+            app_element,
+            focused_attr.as_concrete_TypeRef(),
+            &mut focused_window,
+        );
         if status != 0 || focused_window.is_null() {
             return String::new();
         }
 
         let mut title_value: CFTypeRef = std::ptr::null();
-        let title_attr = ax::kAXTitleAttribute;
-        let status =
-            ax::AXUIElementCopyAttributeValue(focused_window.cast(), title_attr, &mut title_value);
+        let title_attr = core_foundation::string::CFString::new("AXTitle");
+        let status = ax::AXUIElementCopyAttributeValue(
+            focused_window.cast(),
+            title_attr.as_concrete_TypeRef(),
+            &mut title_value,
+        );
         if status == 0 && !title_value.is_null() {
             // title_value 是 CFStringRef；用 core_foundation 的安全包装转成 Rust String
             let title: core_foundation::string::CFString =
@@ -118,7 +129,5 @@ mod ax {
             attribute: CFStringRef,
             value: *mut CFTypeRef,
         ) -> i32;
-        pub static kAXFocusedWindowAttribute: CFStringRef;
-        pub static kAXTitleAttribute: CFStringRef;
     }
 }
