@@ -2006,7 +2006,7 @@ impl PlatformWindow for MacWindow {
 
     fn set_text_content_type(&self, content_type: Option<&'static str>) {
         let this = self.0.lock();
-        let view = this.native_view.clone();
+        let view = this.native_view;
         let foreground = this.foreground_executor.clone();
         drop(this);
         // AppKit 必须在主线程调用；与其它 NSWindow/NSView 操作一样切到前台执行器
@@ -2571,7 +2571,7 @@ extern "C" fn window_will_enter_fullscreen(this: &Object, _: Sel, _: id) {
         callback();
         window_state.lock().button_layout_changed_callback = Some(callback);
     }
-    let mut lock = window_state.as_ref().lock();
+    let lock = window_state.as_ref().lock();
 
     let min_version = NSOperatingSystemVersion::new(15, 3, 0);
 
