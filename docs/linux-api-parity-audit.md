@@ -94,7 +94,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 25 | `Dialog` 遮罩层也挂了 `window_control_area(Drag)`，Linux 无效 | `dialog/dialog.rs:486`（与 #1 同源） | Windows 上点遮罩会被系统当拖拽，Linux 只走点击关闭，行为分叉 | 已核实 |
 | 26 | `appears_transparent` / `traffic_light_position` / `app_owns_titlebar_drag` 在 Linux 被丢弃，且后者文档误写「macOS 专用」 | `platform.rs:2395-2400`、`2242-2244`；X11 `window.rs:731-754`、Wayland `window.rs:538` 只读 `title`；`app_owns_titlebar_drag` 实际 Windows 也用（`rgpui-windows/src/window.rs:503`） | 照抄 `TitleBar::window_options()` 的调用者带着三个 Linux 无意义字段，且文档口径自相矛盾 | 已核实 |
 | 27 | 一批 macOS-only API 无平台标注：`set_window_edited`、`show_character_palette`、`titlebar_double_click`、tab 系列、`set_text_content_type` | `window.rs:2992-3014`、`platform.rs:1276-1317`、`1429`；对照 `set_document_path`（`window.rs:2997` 已写 macOS） | 调用方以为平台级语义已生效，Linux 全是空操作 | 已核实 |
-| 28 | `Tray::visible` 三个平台都不读 | `system/tray.rs:59-60`、`125-129`；Linux `platform.rs:382-405`、Windows `platform.rs:726-754`；SNI `tray_sni.rs:282/486` 恒 `true` | 设 `visible: false` 仍显示托盘图标 | 待验证 |
+| 28 | `Tray::visible` 三个平台都不读 | `system/tray.rs:59-60`、`125-129`；Linux `platform.rs:382-405`、Windows `platform.rs:726-754`；SNI `tray_sni.rs:282/486` 恒 `true` | 设 `visible: false` 仍显示托盘图标 | **已修（Linux）**：映射为 SNI Status Active/Passive；Windows/macOS 仍未落地 |
 | 29 | `Input::content_type` 的「密码管理器/自动填充」原生部分只实现了一半 | `input_ui/input/widget.rs:180-188`；`content_type.rs:152-171` 的 `#[cfg(not(macos))]` 分支是 `let _ = (window, content_type);` | 无障碍 Role 生效，但原生自动填充/输入法提示在 Linux 不发生 | 待验证 |
 | 30 | `set_menus` 在 Linux 只存不显示，且与自绘 `AppMenuBar` 数据源不同步 | `app.rs:2612-2621`；`linux/platform.rs:814-822`；`menu/app_menu_bar.rs:47-63` 读 `GlobalState::app_menus()` | 只调 `cx.set_menus(...)` 在 Linux 看不到任何菜单栏 | 待验证 |
 | 31 | `gpu_specs` 文档与实现相反 | `window.rs:6633-6637` 写「Mac 和 Windows 上返回 None」，但三个 Linux 后端都实现了（`x11/window.rs:2491`、`wayland/window.rs:2151`、`headless/window.rs:228`） | 文档误导，应用可能因此跳过 Linux 的 GPU 信息展示 | 已核实 |
@@ -123,7 +123,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 46 | 电源事件监听失败后只 warn 且 `power_listener_started` 仍置 true，永不重试 | `platform.rs:266-283` | 待验证 |
 | 47 | `open_uri` / `reveal_path` 全失败只 `log::error!`，函数返回 `()` | `platform.rs:1027-1071`、`1080-1098` | 待验证 |
 | 48 | `set_exclusive_zone` 对非 layer-shell 窗口只 `debug!` 后返回 | `wayland/window.rs:2078-2097` | **已修** |
-| 49 | `headless/window.rs` 的 frame / close / input 回调全空，等一帧的 Future 永不 resolve | `headless/window.rs:193-216` | 待验证 |
+| 49 | `headless/window.rs` 的 frame / close / input 回调全空，等一帧的 Future 永不 resolve | `headless/window.rs:193-216` | **已修** |
 | 50 | X11 无效 `GPUI_X11_SCALE_FACTOR` 环境变量直接 panic | `x11/client.rs:2732`、`2740` | **已修**：warn + 回退自动探测 |
 | 51 | `auto_launch` 硬编码 `$HOME/.config/autostart`，忽略 `XDG_CONFIG_HOME` | `auto_launch.rs:79-82` | **已修**：按 XDG Base Directory 读取 XDG_CONFIG_HOME |
 | 52 | 剪贴板不支持的转换目标 / 缺 selection owner 时只 warn + `return` | `x11/clipboard.rs:362/379`；`wayland/client.rs:1022-1049` | 待验证 |

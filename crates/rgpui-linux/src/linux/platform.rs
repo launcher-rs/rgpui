@@ -425,6 +425,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             if let Some(tooltip) = &tray.tooltip {
                 handle.set_tooltip(tooltip);
             }
+            // 旧 API 的 Tray::visible 此前三个平台都不读；Linux 用 SNI Status
+            // （Active/Passive）如实落地，隐藏时主机不再显示图标
+            handle.set_visible(tray.visible);
             let items = menus
                 .as_ref()
                 .map(|menus| convert_menu_items_to_tray(menus))
