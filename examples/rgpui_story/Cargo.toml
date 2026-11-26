@@ -4,6 +4,12 @@ description = "rgpui 组件示例大全：通过侧边栏导航分类展示所�
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
+
+[[bin]]
+name = "rgpui_story"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 rgpui = { workspace = true, features = [

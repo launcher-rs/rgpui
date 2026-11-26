@@ -38,7 +38,7 @@ rgpui 是一个独立演进的 GPU 加速跨平台 UI 框架，支持 Windows、
 - **Ribbon 功能区**（`ribbon`）：数据驱动 选项卡/分组/大·小·切换·下拉按钮/上下文选项卡，命令按 id 绑定、点击统一派发
 - **按键提示 KeyTips**（`ribbon`）：`Alt`/`F10` 逐层键盘导航（先选项卡、再命令），提示键与命令注册表同源
 - **快速访问工具栏 QAT**（`ribbon`）：`QuickAccessToolbar` 一排紧凑图标按钮，按命令 id 派发，可置于标题栏/Ribbon 之上
-- **迷你工具栏 MiniToolbar**（`ribbon`）：选中后就近浮出的紧凑命令条，与 QAT 共用 `QatItem`，支持绝对定位落点；**不自动绑定编辑器选区**，由应用把 `InputState` 的选区变化接到它（见 `showcase --bin mini_toolbar`）
+- **迷你工具栏 MiniToolbar**（`ribbon`）：选中后就近浮出的紧凑命令条，与 QAT 共用 `QatItem`，支持绝对定位落点；**不自动绑定编辑器选区**，由应用把 `InputState` 的选区变化接到它（见 `showcase --bin ribbon_gallery --features ribbon -- mini_toolbar`）
 - **应用菜单 Backstage**（`ribbon`）：覆盖整窗的文件面板，左导航 + 右内容，页面可为自定义内容或一条命令，`Esc` 关闭
 - **视口**（`viewport`）：`Viewport` 屏幕↔文档坐标映射、锚点缩放、平移、`fit`/`center`、滚轮交互
 - **标尺 + 对齐参考线/吸附**（`viewport`）：`ruler_ticks` 刻度与 `align` 六锚点吸附（产出参考线）；对象选择把手/缩放旋转/对齐分布见 `object_toolkit`（`SelectionHandles`/`ResizeHandle`）

@@ -5,6 +5,22 @@ edition = "2024"
 publish = false
 description = "图片与 SVG 展示：本地/远程/资产图片、加载态与失败态、图片画廊缓存、GIF 播放、SVG 着色"
 
+autobins = false
+
+[[bin]]
+name = "image_showcase"
+path = "src/main.rs"
+test = false
+
+
+[[bin]]
+name = "image"
+path = "src/bin/image.rs"
+test = false
+
+
+
+
 [dependencies]
 rgpui = { workspace = true, features = ["reqwest"] }
 rgpui-platform.workspace = true

@@ -5,6 +5,23 @@ edition = "2024"
 publish = false
 description = "系统托盘：完整托盘（图标/菜单/最小化到托盘）、最小托盘、以及自带 Action 的旧 API 菜单三档演示"
 
+autobins = false
+
+[[bin]]
+name = "tray"
+path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "tray_menu_action"
+path = "src/bin/tray_menu_action.rs"
+test = false
+
+[[bin]]
+name = "tray_simple"
+path = "src/bin/tray_simple.rs"
+test = false
+
 [dependencies]
 rgpui.workspace = true
 rgpui-platform.workspace = true

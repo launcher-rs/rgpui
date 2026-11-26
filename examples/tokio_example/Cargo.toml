@@ -3,9 +3,15 @@ name = "tokio_example"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
 
 [features]
 reqwest = ["dep:reqwest", "rgpui/reqwest"]
+
+[[bin]]
+name = "tokio_example"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 rgpui = { workspace = true, features = ["tokio"] }

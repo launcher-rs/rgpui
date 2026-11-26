@@ -3,6 +3,12 @@ name = "screen_capture"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
+
+[[bin]]
+name = "screen_capture"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 rgpui = { workspace = true, features = ["screen-capture"] }

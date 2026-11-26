@@ -1,4 +1,5 @@
 [package]
+autobins = false
 name = "rgpui_term_basic"
 version = "0.1.0"
 edition = "2024"
@@ -7,11 +8,13 @@ publish = false
 [[bin]]
 name = "basic"
 path = "src/main.rs"
+test = false
 
 # 外接 IO 后端（new_external）演示：无本地 PTY，自喂远端字节流
 [[bin]]
 name = "external_io"
 path = "src/bin/external_io.rs"
+test = false
 
 [dependencies]
 log.workspace = true
