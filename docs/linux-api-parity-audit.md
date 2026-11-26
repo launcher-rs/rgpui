@@ -77,7 +77,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | # | 问题 | 位置 | 证据 / 影响 | 状态 |
 |---|------|------|-------------|------|
 | 10 | Wayland `primary_display` / `window_stack` 恒 `None`，X11 已实现 | `wayland/client.rs:835-837`、`1082-1084`；`x11/client.rs:1631-1640`、`1944-1984` | 多屏定位、窗口栈枚举类功能在 Wayland 静默失效 | 待验证 |
-| 11 | Wayland 权限查询在 portal 有 `GlobalShortcuts` 时返回 `NotDetermined`，但全局热键注册恒失败 | `permissions.rs:126-134`；`wayland/client.rs:530-557`、`platform.rs:112-118` | UI 显示「可申请」，注册总失败或注册后永不触发 | 待验证 |
+| 11 | Wayland 权限查询在 portal 有 `GlobalShortcuts` 时返回 `NotDetermined`，但全局热键注册恒失败 | `permissions.rs:126-134`；`wayland/client.rs:530-557`、`platform.rs:112-118` | UI 显示「可申请」，注册总失败或注册后永不触发 | **已修** |
 | 12 | X11 不处理光标主题/大小变更事件，Wayland 会更新 | `x11/client.rs:551-553`；`wayland/client.rs:708-713` | 运行时切主题后应用内光标不更新，后端行为不对等 | 待验证 |
 | 13 | X11 `request_frame` 缺失，纯定时动画卡住；Wayland 靠 `commit` 能推进 | `crates/rgpui/src/platform.rs:1404-1410`；`x11/window.rs` 的 `PlatformWindow` 实现 | 同一段动画代码在两个后端表现不同 | 待验证 |
 | 14 | `focused_window` 只要编了 x11 feature 就无条件连 X11，即使在 Wayland 会话 | `focused_window.rs:17-22` | Wayland + XWayland 下返回 XWayland 客户端信息，不是当前原生窗口 | **已修** |
@@ -118,7 +118,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 |---|------|------|------|
 | 42 | portal Settings 连接失败后整个 future 静默结束，外观/光标主题/减少动效全留默认值 | `xdg_desktop_portal.rs:44-47`、`177-186` | **已修** |
 | 43 | reduce-motion 变更只更新 `common`，已有窗口不重读，需重启应用 | `xdg_desktop_portal.rs:258-259`；`wayland/client.rs:708-713`、`x11/client.rs:548-550` | 待验证 |
-| 44 | Wayland 光标主题加载失败直接 `return`，指针完全消失（无默认兜底） | `wayland/cursor.rs:118-121` | 待验证 |
+| 44 | Wayland 光标主题加载失败直接 `return`，指针完全消失（无默认兜底） | `wayland/cursor.rs:118-121` | **已修** |
 | 45 | 托盘 watcher 初始注册失败只 `debug!`，后续只靠命令流重试，shell 重启后可能永不注册 | `tray_sni.rs:396-416` | **已修** |
 | 46 | 电源事件监听失败后只 warn 且 `power_listener_started` 仍置 true，永不重试 | `platform.rs:266-283` | 待验证 |
 | 47 | `open_uri` / `reveal_path` 全失败只 `log::error!`，函数返回 `()` | `platform.rs:1027-1071`、`1080-1098` | 待验证 |
