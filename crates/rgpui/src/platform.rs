@@ -1224,6 +1224,10 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// 注册窗口关闭请求回调，返回 `false` 可阻止关闭。
     fn on_should_close(&self, callback: Box<dyn FnMut() -> bool>);
     /// 注册窗口控件区域命中测试回调（用于自定义标题栏拖拽区域）。
+    ///
+    /// 只有 Windows / Web 后端会在命中测试时调用该回调；Linux 与 macOS 后端当前
+    /// 不读取它。跨平台标题栏应改用显式鼠标事件 + `Window::start_window_move` /
+    /// `zoom_window` / `minimize_window`，或直接使用 [`crate::title_bar::TitleBar`]。
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>);
     /// 注册窗口关闭回调，窗口关闭时调用。
     fn on_close(&self, callback: Box<dyn FnOnce()>);

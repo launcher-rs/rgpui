@@ -1878,6 +1878,9 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 核心只在 Windows / Web 注册该回调（见 rgpui/src/window.rs 的注册处）。
+        // Wayland 是客户端装饰，拖拽与窗口按钮由 TitleBar 的显式鼠标事件 +
+        // start_window_move / zoom_window 接管，这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {

@@ -304,6 +304,7 @@ impl RenderOnce for TitleBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_client_decorated = matches!(window.window_decorations(), Decorations::Client { .. });
         let is_web = cfg!(target_family = "wasm");
+        let is_windows = cfg!(target_os = "windows");
         let is_linux = cfg!(target_os = "linux");
         let is_macos = cfg!(target_os = "macos");
 
@@ -357,9 +358,15 @@ impl RenderOnce for TitleBar {
                         .flex_shrink_0()
                         .flex_1()
                         .when(!is_web, |this| {
-                            this.window_control_area(WindowControlArea::Drag)
-                                .when(window.is_fullscreen(), |this| this.pl_3())
-                                .when(is_linux && is_client_decorated, |this| {
+                            // Drag 命中区只有 Windows 后端会读取；Linux / macOS
+                            // 的拖拽由上面的 on_mouse_down/on_mouse_move 状态机处理。
+                            this.when(is_windows, |this| {
+                                this.window_control_area(WindowControlArea::Drag)
+                            })
+                            .when(window.is_fullscreen(), |this| this.pl_3())
+                            .when(
+                                is_linux && is_client_decorated,
+                                |this| {
                                     this.child(
                                         div()
                                             .top_0()
@@ -374,7 +381,8 @@ impl RenderOnce for TitleBar {
                                                 },
                                             ),
                                     )
-                                })
+                                },
+                            )
                         })
                         .children(self.children),
                 )

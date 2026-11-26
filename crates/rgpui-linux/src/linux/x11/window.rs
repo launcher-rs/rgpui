@@ -2240,6 +2240,9 @@ impl PlatformWindow for X11Window {
     }
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 核心只在 Windows / Web 注册该回调（见 rgpui/src/window.rs 的注册处）。
+        // X11 的对应能力由窗口管理器处理（服务端装饰）或由 TitleBar 的显式
+        // 鼠标事件接管（客户端装饰），这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {

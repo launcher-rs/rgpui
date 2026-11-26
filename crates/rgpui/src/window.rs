@@ -708,6 +708,17 @@ pub(crate) struct HitTest {
 }
 
 /// 对应平台窗口的窗口控制区域类型。
+///
+/// **平台限制（重要）**：这个标记目前只对 Windows 与 Web 后端生效——只有它们会读取
+/// [`PlatformWindow::on_hit_test_window_control`](crate::platform::PlatformWindow::on_hit_test_window_control)
+/// 注册的回调，把命中区映射到 `WM_NCHITTEST` / 浏览器拖动区。Linux（Wayland / X11）与
+/// macOS 后端**不读取**它，标记不会产生任何效果。
+///
+/// 在 Linux / macOS 上请显式注册鼠标事件并调用
+/// [`Window::start_window_move`](Self::start_window_move)、
+/// [`Window::zoom_window`](Self::zoom_window)、
+/// [`Window::minimize_window`](Self::minimize_window) 等；或直接复用框架自带的
+/// [`TitleBar`](crate::title_bar::TitleBar)，它已经按平台分流处理。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WindowControlArea {
     /// 允许拖动平台窗口的区域。
@@ -1998,24 +2009,29 @@ impl Window {
                     .log_err();
             })
         });
-        platform_window.on_hit_test_window_control({
-            let mut cx = cx.to_async();
-            Box::new(move || {
-                skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
-                    for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                        // 只有该区域是最上层 hitbox 时才算窗口控制区。
-                        // 标题栏整条是 Drag 区，但其上还压着快速访问工具栏、文件入口等
-                        // 按钮；若按“包含鼠标”判定，系统会把按钮点击当成标题栏拖拽，
-                        // 这些按钮就永远收不到点击。
-                        if window.mouse_hit_test.ids.first() == Some(&hitbox.id) {
-                            return Some(*area);
+        // 只有 Windows / Web 后端会真正调用这个回调；Linux 与 macOS 后端不读取它。
+        // 在这两个平台上跳过注册，既不做无用功，也避免让调用方以为「注册成功 =
+        // 控制区已生效」——这一处静默注册正是跨平台标题栏踩坑的来源之一。
+        if cfg!(any(target_os = "windows", target_family = "wasm")) {
+            platform_window.on_hit_test_window_control({
+                let mut cx = cx.to_async();
+                Box::new(move || {
+                    skip_if_app_borrowed(handle.update(&mut cx, |_, window, _cx| {
+                        for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
+                            // 只有该区域是最上层 hitbox 时才算窗口控制区。
+                            // 标题栏整条是 Drag 区，但其上还压着快速访问工具栏、文件入口等
+                            // 按钮；若按“包含鼠标”判定，系统会把按钮点击当成标题栏拖拽，
+                            // 这些按钮就永远收不到点击。
+                            if window.mouse_hit_test.ids.first() == Some(&hitbox.id) {
+                                return Some(*area);
+                            }
                         }
-                    }
-                    None
-                }))
-                .unwrap_or(None)
-            })
-        });
+                        None
+                    }))
+                    .unwrap_or(None)
+                })
+            });
+        }
         platform_window.on_move_tab_to_new_window({
             let mut cx = cx.to_async();
             Box::new(move || {

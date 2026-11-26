@@ -62,7 +62,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 
 | # | 问题 | 位置 | 证据 / 影响 | 状态 |
 |---|------|------|-------------|------|
-| 1 | `WindowControlArea` / `on_hit_test_window_control` 在 Linux 三个后端全部空实现 | `crates/rgpui/src/window.rs:2001`；`wayland/window.rs:1880`、`x11/window.rs:2242`、`headless/window.rs:211`；对照 `rgpui-windows/src/window.rs:1128` | 自绘标题栏的拖拽区与三个按钮命中测试永远返回不了区域；API 名跨平台、语义仅 Windows | 已核实 |
+| 1 | `WindowControlArea` / `on_hit_test_window_control` 在 Linux 三个后端全部空实现 | `crates/rgpui/src/window.rs:2001`；`wayland/window.rs:1880`、`x11/window.rs:2242`、`headless/window.rs:211`；对照 `rgpui-windows/src/window.rs:1128` | 自绘标题栏的拖拽区与三个按钮命中测试永远返回不了区域；API 名跨平台、语义仅 Windows | **已修复**（见下） |
 | 2 | `current_platform()` 按 feature 生成匹配分支，兜底 `unreachable!()` | `crates/rgpui-linux/src/linux.rs:58-83` | `rgpui` 与 `rgpui-linux` 的 wayland/x11 feature 不一致时启动直接 panic | 已核实 |
 | 3 | Wayland 宣称支持屏幕捕获，实际 `screen_capture_sources()` 直接返回「not yet implemented」 | `crates/rgpui-linux/src/linux/platform.rs:75-77`；`wayland/client.rs:838-855` | `App::is_screen_capture_supported()` 暴露给 UI 为 true，点击后列表空/报错 | 已核实 |
 | 4 | Wayland 启动期多处硬 `unwrap!` / 低版本 `panic!` | `wayland/client.rs:649`、`562/564`、`530-557` | 无 `wl_seat`、老合成器、连接失败时直接崩溃，不回退其它后端或 headless | 待验证 |
@@ -176,7 +176,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 
 | # | 问题 | 修复方案 | 验证方式 | 状态 |
 |---|------|----------|----------|------|
-| 1 | `WindowControlArea` Linux 静默 no-op | ① rustdoc 明确「仅 Windows 有效」；② Linux 后端 debug 下记 warn，避免静默；③ 文档给出 `TitleBar` / `start_window_move` 的正确做法 | 文档单测 + Linux 手动验证自绘标题栏 | 待开始 |
+| 1 | `WindowControlArea` Linux 静默 no-op | ① 四处 rustdoc 明写「仅 Windows / Web 生效」并给出跨平台替代做法；② 核心只在真正会读回调的平台注册，去掉无用注册；③ 三个 Linux 后端空实现补契约注释；④ `TitleBar` / `Dialog` / 两个 rgpui-term 示例的 Drag 标记收窄到 Windows | workspace clippy + guards + Linux 示例启动 | **已完成** |
 | 2 | `current_platform()` `unreachable!` | 按实际编译后端 fallback，返回可读错误而不是 panic | feature 组合矩阵 + 单元测试 | 待开始 |
 | 3 | Wayland 屏幕撒谎 | 覆盖 `is_screen_capture_supported() -> false`（实现 portal 前） | 现有能力测试 | 待开始 |
 | 4 | Wayland 启动期硬 panic | 连接/绑定失败改 `Result` 并逐后端 fallback | 无 seat / 老合成器模拟 | 待开始 |

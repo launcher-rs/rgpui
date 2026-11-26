@@ -209,6 +209,8 @@ impl PlatformWindow for HeadlessWindow {
     fn on_close(&self, _callback: Box<dyn FnOnce()>) {}
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 无头窗口没有系统命中测试；核心也只在 Windows / Web 注册该回调，
+        // 这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, _callback: Box<dyn FnMut()>) {}
