@@ -63,7 +63,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | # | 问题 | 位置 | 证据 / 影响 | 状态 |
 |---|------|------|-------------|------|
 | 1 | `WindowControlArea` / `on_hit_test_window_control` 在 Linux 三个后端全部空实现 | `crates/rgpui/src/window.rs:2001`；`wayland/window.rs:1880`、`x11/window.rs:2242`、`headless/window.rs:211`；对照 `rgpui-windows/src/window.rs:1128` | 自绘标题栏的拖拽区与三个按钮命中测试永远返回不了区域；API 名跨平台、语义仅 Windows | **已修复**（见下） |
-| 2 | `current_platform()` 按 feature 生成匹配分支，兜底 `unreachable!()` | `crates/rgpui-linux/src/linux.rs:58-83` | `rgpui` 与 `rgpui-linux` 的 wayland/x11 feature 不一致时启动直接 panic | 已核实 |
+| 2 | `current_platform()` 按 feature 生成匹配分支，兜底 `unreachable!()` | `crates/rgpui-linux/src/linux.rs:58-83` | `rgpui` 与 `rgpui-linux` 的 wayland/x11 feature 不一致时启动直接 panic | **已修复**（见下） |
 | 3 | Wayland 宣称支持屏幕捕获，实际 `screen_capture_sources()` 直接返回「not yet implemented」 | `crates/rgpui-linux/src/linux/platform.rs:75-77`；`wayland/client.rs:838-855` | `App::is_screen_capture_supported()` 暴露给 UI 为 true，点击后列表空/报错 | 已核实 |
 | 4 | Wayland 启动期多处硬 `unwrap!` / 低版本 `panic!` | `wayland/client.rs:649`、`562/564`、`530-557` | 无 `wl_seat`、老合成器、连接失败时直接崩溃，不回退其它后端或 headless | 待验证 |
 | 5 | `on_open_urls` / `on_reopen` 回调在 Linux 只存不派发 | `crates/rgpui-linux/src/linux/platform.rs:593-596`、`753-756`；对照 macOS `platform.rs:1471-1492`、`971+1446` | 注册 URL scheme 返回 `Ok`，但以该 scheme 启动应用时回调永不触发；Dock 重开事件同理 | 已核实（全局无派发点） |
@@ -177,7 +177,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | # | 问题 | 修复方案 | 验证方式 | 状态 |
 |---|------|----------|----------|------|
 | 1 | `WindowControlArea` Linux 静默 no-op | ① 四处 rustdoc 明写「仅 Windows / Web 生效」并给出跨平台替代做法；② 核心只在真正会读回调的平台注册，去掉无用注册；③ 三个 Linux 后端空实现补契约注释；④ `TitleBar` / `Dialog` / 两个 rgpui-term 示例的 Drag 标记收窄到 Windows | workspace clippy + guards + Linux 示例启动 | **已完成** |
-| 2 | `current_platform()` `unreachable!` | 按实际编译后端 fallback，返回可读错误而不是 panic | feature 组合矩阵 + 单元测试 | 待开始 |
+| 2 | `current_platform()` `unreachable!` | 移除 `unreachable!` 与 X11 `unwrap()`：Wayland 会话用 Wayland 后端，其余情况尝试 X11（含 XWayland 兜底），最后落到无头后端并记 warn；抽出泛型 `make_platform` 消除三处重复构造 | 四种 feature 组合（默认 / x11-only / wayland-only / 无后端）编译 + workspace clippy + guards | **已完成** |
 | 3 | Wayland 屏幕撒谎 | 覆盖 `is_screen_capture_supported() -> false`（实现 portal 前） | 现有能力测试 | 待开始 |
 | 4 | Wayland 启动期硬 panic | 连接/绑定失败改 `Result` 并逐后端 fallback | 无 seat / 老合成器模拟 | 待开始 |
 | 5 | URL scheme / 重开回调不派发 | Linux 启动路径解析 argv 并调用 `callbacks.open_urls`；桌面入口激活补 `on_reopen` | 带 scheme 启动示例 + 测试 | 待开始 |
