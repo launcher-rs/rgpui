@@ -55,6 +55,7 @@ use rgpui::{
 use semver::Version;
 use std::{
     cell::Cell,
+    collections::HashMap,
     ffi::{CStr, OsStr, c_void},
     os::{raw::c_char, unix::ffi::OsStrExt},
     path::{Path, PathBuf},
@@ -184,6 +185,9 @@ pub(crate) struct MacPlatformState {
     validate_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     will_open_menu: Option<Box<dyn FnMut()>>,
     menu_actions: Vec<Box<dyn Action>>,
+    /// 旧 set_tray API 的菜单项自带动作：id → Action。
+    /// 点击托盘菜单时优先查这里派发（与 Windows / Linux 同口径）。
+    tray_menu_actions: HashMap<SharedString, Box<dyn Action>>,
     open_urls: Option<Box<dyn FnMut(Vec<String>)>>,
     finish_launching: Option<Box<dyn FnOnce()>>,
     dock_menu: Option<id>,
@@ -239,6 +243,7 @@ impl MacPlatform {
             validate_menu_command: None,
             will_open_menu: None,
             menu_actions: Default::default(),
+            tray_menu_actions: HashMap::default(),
             open_urls: None,
             finish_launching: None,
             dock_menu: None,
@@ -276,8 +281,23 @@ impl MacPlatform {
         }
     }
 
-    /// 处理状态栏菜单项点击：把菜单项 id 交给应用。
+    /// 处理状态栏菜单项点击：旧 API 自带的 Action 优先经 on_app_menu_action 派发，
+    /// 找不到才把 id 交给 on_tray_menu_action（与 Windows / Linux 同口径）。
     pub(crate) fn handle_tray_menu_action(&self, id: SharedString) {
+        let action = self
+            .0
+            .lock()
+            .tray_menu_actions
+            .get(&id)
+            .map(|a| a.boxed_clone());
+        if let Some(action) = action {
+            let callback = self.0.lock().menu_command.take();
+            if let Some(mut callback) = callback {
+                callback(&*action);
+                self.0.lock().menu_command = Some(callback);
+            }
+            return;
+        }
         let callback = self.0.lock().tray_menu_action_callback.take();
         if let Some(mut callback) = callback {
             callback(id);
@@ -1270,6 +1290,30 @@ impl Platform for MacPlatform {
         crate::global_hotkey::set_callback(callback);
     }
 
+    /// 旧 `App::set_tray(tray, menus, ..)` 入口：此前 macOS 完全没有覆写，
+    /// 导致只显示图标、菜单和菜单项自带的 Action 全部失效。
+    fn set_tray(&self, tray: rgpui::Tray, menus: Option<Vec<MenuItem>>, _keymap: &Keymap) {
+        let items = menus
+            .as_ref()
+            .map(|menus| convert_menu_items_to_tray(menus))
+            .unwrap_or_default();
+        let mut actions = HashMap::default();
+        if let Some(menus) = menus.as_ref() {
+            collect_tray_menu_actions_into(menus, &mut actions);
+        }
+        let mut state = self.0.lock();
+        state.tray_menu_actions = actions;
+        let mac_tray = state
+            .tray
+            .get_or_insert_with(|| MacTray::new(self as *const Self as *mut c_void));
+        mac_tray.set_icon(tray.icon_data.as_ref().map(|d| d.data.as_slice()));
+        if let Some(tooltip) = tray.tooltip.as_ref() {
+            mac_tray.set_tooltip(tooltip);
+        }
+        mac_tray.set_menu(items);
+        mac_tray.set_visible(tray.visible);
+    }
+
     fn set_tray_icon(&self, icon: Option<&[u8]>) {
         let mut state = self.0.lock();
         let tray = state
@@ -1280,6 +1324,8 @@ impl Platform for MacPlatform {
 
     fn set_tray_menu(&self, menu: Vec<TrayMenuItem>) {
         let mut state = self.0.lock();
+        // 换成新 API 后旧菜单项动作已不存在，清空避免派发失效的 Action
+        state.tray_menu_actions.clear();
         let tray = state
             .tray
             .get_or_insert_with(|| MacTray::new(self as *const Self as *mut c_void));
@@ -1626,6 +1672,41 @@ unsafe extern "C" {
     pub(super) static kTISPropertyInputSourceIsASCIICapable: CFStringRef;
     pub(super) static kTISPropertyInputSourceType: CFStringRef;
     pub(super) static kTISTypeKeyboardInputMode: CFStringRef;
+}
+
+/// 把旧 `MenuItem` 转成托盘菜单项（与 Linux 的口径一致）。
+fn convert_menu_items_to_tray(items: &[MenuItem]) -> Vec<TrayMenuItem> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            MenuItem::Separator => Some(TrayMenuItem::Separator),
+            MenuItem::Action { name, .. } => Some(TrayMenuItem::Action {
+                label: name.clone(),
+                id: name.clone(),
+            }),
+            MenuItem::Submenu(menu) => Some(TrayMenuItem::Submenu {
+                label: menu.name.clone(),
+                items: convert_menu_items_to_tray(&menu.items),
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 递归收集旧菜单项自带的动作，键与 convert_menu_items_to_tray 生成的 id 一致。
+fn collect_tray_menu_actions_into(
+    items: &[MenuItem],
+    out: &mut HashMap<SharedString, Box<dyn Action>>,
+) {
+    for item in items {
+        match item {
+            MenuItem::Action { name, action, .. } => {
+                out.insert(name.clone(), action.boxed_clone());
+            }
+            MenuItem::Submenu(menu) => collect_tray_menu_actions_into(&menu.items, out),
+            _ => {}
+        }
+    }
 }
 
 mod security {

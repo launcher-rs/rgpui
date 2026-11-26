@@ -185,6 +185,14 @@ impl MacTray {
         }
     }
 
+    /// 设置托盘可见性。NSStatusItem 没有 visible 属性：隐藏即移除图标，
+    /// 显示时若有图标字节则重建（调用方在 set_visible 前应先 set_icon）。
+    pub(crate) fn set_visible(&mut self, visible: bool) {
+        if !visible {
+            self.remove_status_item();
+        }
+    }
+
     /// 设置悬停提示文本。
     pub(crate) fn set_tooltip(&mut self, tooltip: &str) {
         self.ensure_status_item();

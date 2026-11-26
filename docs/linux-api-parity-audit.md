@@ -199,7 +199,7 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | # | 问题 | 位置 | 影响 | 状态 |
 |---|------|------|------|------|
 | M1 | 默认 feature 下 macOS 完全没有文字渲染：`font-kit` 非默认，`MacPlatform::new` 只装 `NoopTextSystem` 并记一条默认级别不可见的 warn | `macos/platform.rs:212-223`；`rgpui-platform/Cargo.toml:17/19` | 窗口能开、矩形能画，但所有文本为空 | **已修**：`rgpui-platform` 默认开启 `font-kit`（需 macOS CI 验证运行时） |
-| M2 | `App::set_tray(Tray, menus)` 在 macOS 完全无实现（icon/menu/tooltip 有，聚合入口没有），菜单项 Action 丢失 | `app.rs:2694`；`macos/platform.rs` 的 `impl Platform` 无 `set_tray` | 托盘只出图标，菜单和动作全失效 | 待修 |
+| M2 | `App::set_tray(Tray, menus)` 在 macOS 完全无实现（icon/menu/tooltip 有，聚合入口没有），菜单项 Action 丢失 | `app.rs:2694`；`macos/platform.rs` 的 `impl Platform` 无 `set_tray` | 托盘只出图标，菜单和动作全失效 | **已修**：拆解 icon/menu/tooltip + 旧 Action 经 on_app_menu_action 派发（需 macOS CI 验证） |
 | M3 | `applicationShouldHandleReopen:hasVisibleWindows:` 注册签名缺 `BOOL` 返回值 | `macos/platform.rs:98-101`、`1408-1418` | Dock 重开时返回栈上垃圾值，行为不稳定 | **已修**（需 macOS 真机/CI 验证） |
 | M4 | `focused_window_info().window_title` 恒为空串，技能却宣称用 AXUIElement | `macos/focused_window.rs:52-60/69-82`；`platform.md:199` | 依赖标题做识别/自动化的 UI 全拿到空串 | 待修 |
 | M5 | `InputMonitoring` 权限借用辅助功能状态，`request_permission` 也不请求输入监控 | `macos/permissions.rs:60-82`；`platform.rs:1233-1242` | UI 误报授权状态，请求静默无操作 | **已修**：独立 TCC 类别 preflight/request（需 macOS CI 验证） |
