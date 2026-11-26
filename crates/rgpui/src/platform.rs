@@ -2275,6 +2275,11 @@ pub struct WindowOptions {
     /// 这只是**请求**：Wayland 无 xdg-decoration 支持时服务端装饰会回退为客户端
     /// 装饰，X11 无合成器时客户端装饰会回退为服务端装饰。回退记 `warn` 日志，
     /// 实际生效值用 `Window::window_decorations()` 查询。
+    ///
+    /// 保持 `None`（期望系统装饰）的普通顶层窗口在回退为客户端装饰时，框架会
+    /// 自动补画一个默认标题栏，以避免 Wayland 上「系统不画、应用也不画」的
+    /// 无标题栏窗口；显式设为 [`WindowDecorations::Client`] 表示应用自行渲染
+    /// `TitleBar`，框架不会重复补画。
     pub window_decorations: Option<WindowDecorations>,
 
     /// 图标图片（仅 X11）

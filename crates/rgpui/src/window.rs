@@ -45,8 +45,8 @@ use crate::{
     Subscription, SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
     TextRenderingMode, TextStyle, TextStyleRefinement, TransformationMatrix, Underline,
     UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls,
-    WindowDecorations, WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, profiler,
-    px, root::Root, size, transparent_black,
+    WindowDecorations, WindowKind, WindowOptions, WindowParams, WindowTextSystem, point,
+    prelude::*, profiler, px, root::Root, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
@@ -1142,6 +1142,24 @@ enum InputModality {
     Touch,
 }
 
+/// 合成器不提供服务端装饰时，由框架补画的默认标题栏。
+///
+/// 单独做成实体视图而非直接插入 `RenderOnce` 元素：`TitleBar` 内部用
+/// `Window::use_state` 记录拖拽状态，必须在带身份的视图上下文中渲染。
+struct SystemTitleBar;
+
+impl Render for SystemTitleBar {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = window.platform_window.get_title();
+        let mut title_bar = crate::title_bar::TitleBar::new();
+        if !title.is_empty() {
+            title_bar =
+                title_bar.child(crate::div().text_color(cx.theme().foreground).child(title));
+        }
+        title_bar
+    }
+}
+
 /// 保存特定窗口的状态。
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
@@ -1151,6 +1169,12 @@ pub struct Window {
     display_id: Option<DisplayId>,
     is_resizable: bool,
     is_minimizable: bool,
+    /// 应用期望系统标题栏、但合成器无法提供服务端装饰时，由框架补画一个默认标题栏。
+    ///
+    /// 只在 Linux 上有意义：GNOME/Mutter 不支持 `zxdg_decoration_manager_v1`，
+    /// 请求服务端装饰会回退为客户端装饰，若不补画就出现「两边都不管」的无标题栏窗口。
+    /// 显式请求 `WindowDecorations::Client` 的应用会自行绘制 `TitleBar`，不参与此回退。
+    system_title_bar: Option<Entity<SystemTitleBar>>,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
@@ -1522,6 +1546,23 @@ impl Window {
         let initial_window_title = titlebar
             .as_ref()
             .and_then(|titlebar| titlebar.title.clone());
+
+        // 判断是否需要框架补画默认标题栏：应用期望系统装饰，但平台可能无法提供。
+        // 只覆盖常规顶层窗口；弹出层、layer-shell、覆盖层与全屏窗口在其它平台
+        // 本来就没有系统标题栏，这里也不应补画。
+        //
+        // 显式请求客户端装饰意味着应用会自行渲染 `TitleBar`，不能重复补画。
+        let needs_system_title_bar = cfg!(target_os = "linux")
+            && matches!(
+                &kind,
+                WindowKind::Normal | WindowKind::Floating | WindowKind::Dialog
+            )
+            && titlebar
+                .as_ref()
+                .is_some_and(|titlebar| !titlebar.appears_transparent)
+            && !matches!(window_decorations, Some(WindowDecorations::Client))
+            && !app_owns_titlebar_drag
+            && !matches!(&window_bounds, Some(WindowBounds::Fullscreen(_)));
 
         let window_bounds = window_bounds.unwrap_or_else(|| default_bounds(display_id, cx));
         let mut platform_window = cx.platform.open_window(
@@ -2114,6 +2155,8 @@ impl Window {
         #[cfg(feature = "dom-backend")]
         let supports_dom = platform_window.supports_dom();
 
+        let system_title_bar = needs_system_title_bar.then(|| cx.new(|_| SystemTitleBar));
+
         Ok(Window {
             handle,
             invalidator,
@@ -2122,6 +2165,7 @@ impl Window {
             display_id,
             is_resizable,
             is_minimizable,
+            system_title_bar,
             sprite_atlas,
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
@@ -3551,6 +3595,30 @@ impl Window {
         let mut root_element = invariant(self.root.as_ref(), "window must have a root view")
             .clone()
             .into_any_element();
+
+        // Linux 上请求服务端装饰可能因合成器不支持（如 GNOME/Mutter 不提供
+        // `zxdg_decoration_manager_v1`）而回退为客户端装饰。若应用本身没有渲染
+        // `TitleBar`，窗口就既没有系统框架也没有自绘标题栏，与 Windows/macOS/X11
+        // 的默认外观不一致。这里按需补画一个默认标题栏，交互（拖动、双击缩放、
+        // 最小化/最大化/关闭）与框架自带的 `TitleBar` 一致。
+        let needs_fallback = matches!(self.window_decorations(), Decorations::Client { .. });
+        if let Some(title_bar) = self.system_title_bar.as_ref().filter(|_| needs_fallback) {
+            root_element = crate::div()
+                .id("system-title-bar-frame")
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(title_bar.clone())
+                .child(
+                    crate::div()
+                        .id("system-title-bar-content")
+                        .flex_1()
+                        .min_h_0()
+                        .child(root_element),
+                )
+                .into_any_element();
+        }
+
         let root_layout_id = root_element.request_layout(self, cx);
         invariant(self.layout_engine.as_mut(), "layout engine must exist")
             .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
