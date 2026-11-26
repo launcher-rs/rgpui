@@ -49,9 +49,6 @@ pub struct ReqwestClient {
 
 impl ReqwestClient {
     fn builder() -> reqwest::ClientBuilder {
-        // reqwest 用 rustls-no-provider 以避免 aws-lc-sys 的 CMake 构建，
-        // 因此构建 Client 前必须先安装 ring provider，否则直接 panic。
-        super::tls::install_crypto_provider();
         reqwest::Client::builder()
             .use_rustls_tls()
             .connect_timeout(Duration::from_secs(10))

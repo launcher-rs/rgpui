@@ -353,10 +353,7 @@ windows-core = "0.62"
 
 # ---- Reqwest HTTP 客户端 ----
 # HTTP 客户端
-# 关掉默认特性：reqwest 的 default-tls 会启用 rustls + aws-lc-rs（CMake 编译
-# 大量 C/汇编，三平台冷缓存下是构建大头）。改用 rustls-no-provider，由
-# rgpui 的 tls 模块显式安装 ring provider（见 http_client/tls.rs）。
-reqwest = { version = "0.13.5", default-features = false, features = ["json","charset","http2","multipart","socks","stream","rustls-no-provider","system-proxy"] }
+reqwest = { version = "0.13.5", features = ["json","charset","http2","multipart","socks","stream"] }
 
 # ---- Tokio 异步运行时 ----
 # 异步运行时
@@ -364,9 +361,7 @@ tokio = { version = "1.54.1", features = ["rt", "rt-multi-thread", "time"] }
 
 # ---- TLS ----
 # TLS 实现
-# 与 reqwest 的 rustls-no-provider 配套：用 ring 代替默认 aws_lc_rs，
-# 避免编译 aws-lc-sys。prefer-post-quantum 依赖 aws_lc_rs，故一并去掉。
-rustls = { version = "0.23.46", default-features = false, features = ["ring","logging","std","tls12"] }
+rustls = { version = "0.23.46" }
 # 平台证书验证
 rustls-platform-verifier = "0.7.1"
 

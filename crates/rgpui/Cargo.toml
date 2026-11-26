@@ -36,9 +36,6 @@ leak-detection = []
 reqwest = [
     "dep:reqwest",
     "dep:tokio",
-    # rustls-no-provider 要求创建 Client 前安装 crypto provider；provider
-    # 安装逻辑在 tls 模块，故启用 reqwest 时必须一并启用 tls。
-    "tls",
 ]
 # TLS 支持：为 reqwest 客户端启用 rustls 平台证书校验（含系统根证书）。
 tls = [
