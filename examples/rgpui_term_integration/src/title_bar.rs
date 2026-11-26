@@ -300,7 +300,11 @@ impl RenderOnce for TitleBar {
                 .child(
                     h_flex()
                         .id("bar")
-                        .window_control_area(WindowControlArea::Drag)
+                        // Drag 命中区只有 Windows 后端会读取；Linux 的拖拽由上面的
+                        // on_mouse_down/on_mouse_move 状态机调用 start_window_move 接管。
+                        .when(is_windows, |this| {
+                            this.window_control_area(WindowControlArea::Drag)
+                        })
                         .when(window.is_fullscreen(), |this| this.pl_3())
                         .h_full()
                         .justify_between()

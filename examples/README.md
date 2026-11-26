@@ -25,6 +25,16 @@ cargo run -p showcase --bin <名称>
 | `daemon_app` | 常驻后台应用骨架 | `cargo run -p showcase --bin daemon_app` |
 | `active_state_bug` | active 状态回归复现 | `cargo run -p showcase --bin active_state_bug` |
 
+### 合并示例（gallery）
+
+多个小示例合并进一个 bin，用 `-- <demo>` 选择具体演示；不带参数时运行默认项。
+
+| bin | 包含 | 运行 |
+|-----|------|------|
+| `interaction_gallery` | 拖拽、焦点可见性、Tab 焦点遍历、鼠标压感、实体跨窗口、关窗退出、所有权传递、原生菜单数据、系统通知 | `cargo run -p showcase --bin interaction_gallery -- <demo>` |
+| `layout_gallery` | 网格布局、状态栏、停靠面板、对话视图、树形控件、路径绘制基准 | `cargo run -p showcase --bin layout_gallery -- <demo>` |
+| `paint_gallery` | 渐变、图案/纹理、自定义绘制 | `cargo run -p showcase --bin paint_gallery -- <demo>` |
+
 ### 组件
 
 | bin | 说明 | 运行 |
@@ -37,10 +47,6 @@ cargo run -p showcase --bin <名称>
 | `dialog` | 对话框 / 焦点陷阱 | `cargo run -p showcase --bin dialog` |
 | `sidebar` | 侧边栏 | `cargo run -p showcase --bin sidebar` |
 | `scrollable` | 滚动 / 滚动条 | `cargo run -p showcase --bin scrollable` |
-| `grid_layout` | 网格布局 | `cargo run -p showcase --bin grid_layout` |
-| `gradient` | 渐变填充 | `cargo run -p showcase --bin gradient` |
-| `pattern` | 图案 / 纹理绘制 | `cargo run -p showcase --bin pattern` |
-| `painting` | 自定义绘制 | `cargo run -p showcase --bin painting` |
 | `charts` | 图表（Bar/Line/Pie 等，需 feature） | `cargo run -p showcase --bin charts --features charts` |
 | `effects` | 封装动效（Aurora/Confetti 等，需 feature） | `cargo run -p showcase --bin effects --features effects` |
 | `qr_code` | 二维码（需 feature） | `cargo run -p showcase --bin qr_code --features qr-code` |
@@ -49,16 +55,7 @@ cargo run -p showcase --bin <名称>
 
 | bin | 说明 | 运行 |
 |-----|------|------|
-| `drag_drop` | 拖拽 | `cargo run -p showcase --bin drag_drop` |
-| `focus_visible` | 焦点可见性（focus ring） | `cargo run -p showcase --bin focus_visible` |
-| `tab_stop` | Tab 焦点遍历 | `cargo run -p showcase --bin tab_stop` |
-| `mouse_pressure` | 鼠标压力/倾斜输入 | `cargo run -p showcase --bin mouse_pressure` |
-| `move_entity_between_windows` | 实体跨窗口迁移 | `cargo run -p showcase --bin move_entity_between_windows` |
-| `on_window_close_quit` | 关窗退出策略 | `cargo run -p showcase --bin on_window_close_quit` |
-| `ownership_post` | 实体所有权传递 | `cargo run -p showcase --bin ownership_post` |
-| `set_menus` | 原生菜单 | `cargo run -p showcase --bin set_menus` |
 | `native_menu` | OS 原生弹出菜单（`NativeMenu` + `Window::show_native_menu`） | `cargo run -p showcase --bin native_menu` |
-| `native_notification` | 系统通知 | `cargo run -p showcase --bin native_notification` |
 
 ### 性能与调试
 
@@ -66,7 +63,6 @@ cargo run -p showcase --bin <名称>
 |-----|------|------|
 | `fps_hud` | FPS / 性能 HUD 叠层 | `cargo run -p showcase --bin fps_hud` |
 | `input_latency` | 输入延迟直方图（需 feature） | `cargo run -p showcase --bin input_latency --features input-latency` |
-| `paths_bench` | 路径绘制基准 | `cargo run -p showcase --bin paths_bench` |
 | `inspector` | 元素检查器默认面板 | `cargo run -p showcase --bin inspector`（`--release --features inspector` 亦可） |
 | `inspector_custom` | 检查器自定义面板 | `cargo run -p showcase --bin inspector_custom` |
 | `testing` | 测试基建（TestAppContext / VisualTestContext） | `cargo test -p showcase --bin testing` |
@@ -80,8 +76,6 @@ cargo run -p showcase --bin <名称>
 | `markdown_stream` | Markdown 流式增量渲染（`MarkdownState` + 防抖后台解析） | `cargo run -p showcase --bin markdown_stream` |
 | `markdown_selection` | Markdown 文档级选区（拖选 / Ctrl+C 复制 / Ctrl+A 全选） | `cargo run -p showcase --bin markdown_selection` |
 | `tabs` | 标签页（含拖拽重排） | `cargo run -p showcase --bin tabs` |
-| `tree` | 树形控件 | `cargo run -p showcase --bin tree` |
-| `status_bar` | 状态栏 | `cargo run -p showcase --bin status_bar` |
 
 ### 编辑器 / 工作区
 
@@ -89,23 +83,23 @@ cargo run -p showcase --bin <名称>
 |-----|------|------|
 | `editor` | 代码编辑器（tree-sitter / LSP / 片段 / inlay，需 feature） | `cargo run -p showcase --bin editor --features editor` |
 | `keymap` | 快捷键映射 | `cargo run -p showcase --bin keymap` |
-| `dock` | 停靠面板布局 | `cargo run -p showcase --bin dock` |
-| `chat` | AI 对话视图（ChatView 等） | `cargo run -p showcase --bin chat` |
 
 ### 应用套件基座（`ribbon` / `viewport` / `spreadsheet` / `document` / `control-channel` feature）
+
+> `ribbon_gallery` / `viewport_gallery` / `spreadsheet_gallery` 是按 feature 合并的 gallery，需用 `--features <对应 feature>` 开启，并用 `-- <demo>` 选择具体演示。
 
 | bin | 说明 | 运行 |
 |-----|------|------|
 | `app_suite` | **套件基座整合演示**：一份命令表同时驱动 QAT / Ribbon（含按键提示）/ 应用菜单 / 分页视口 / 迷你工具栏，状态栏回显 `label_for`；画面上的 ①…⑨ 编号浮标 + 右侧组件清单标出每块对应的模块（悬停描边，`Ctrl+Shift+E/I` 开关，Shift + 左键拖框选唤出 `MiniToolbar`） | `cargo run -p showcase --bin app_suite` |
-| `command_registry` | 命令注册表：按 id 派发 + 命令面板接入 | `cargo run -p showcase --bin command_registry` |
+| `command_registry` | 命令注册表：按 id 派发 + 命令面板接入 | `cargo run -p showcase --bin ribbon_gallery --features ribbon -- command_registry` |
 | `automation` | 控制通道 / MCP：本机 TCP（JSON-RPC + 密钥）与 stdio MCP 工具调用同一套命令 | `cargo run -p showcase --bin automation`（加 `--mcp` 开 MCP） |
-| `ribbon` | Ribbon 功能区（选项卡 / 分组 / 大·小·切换·下拉按钮 / 上下文选项卡）+ Alt/F10 按键提示 | `cargo run -p showcase --bin ribbon` |
-| `qat` | 快速访问工具栏（QAT）：按命令 id 绑定的紧凑图标按钮条 | `cargo run -p showcase --bin qat` |
-| `mini_toolbar` | 迷你工具栏：拖动选择后就近浮出命令条（B/I/U/高亮/复制） | `cargo run -p showcase --bin mini_toolbar` |
-| `backstage` | 应用菜单：覆盖整窗的文件面板（左导航 + 内容页/命令页） | `cargo run -p showcase --bin backstage` |
-| `viewport` | 视口：可缩放/平移的 A4 文档页视图（屏幕↔文档坐标映射） | `cargo run -p showcase --bin viewport` |
-| `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin ruler` |
-| `canvas_objects` | 画布对象工具：选区 / 缩放手柄 / 旋转手柄 / 对齐 / 分布 | `cargo run -p showcase --bin canvas_objects` |
+| `ribbon` | Ribbon 功能区（选项卡 / 分组 / 大·小·切换·下拉按钮 / 上下文选项卡）+ Alt/F10 按键提示 | `cargo run -p showcase --bin ribbon_gallery --features ribbon -- ribbon` |
+| `qat` | 快速访问工具栏（QAT）：按命令 id 绑定的紧凑图标按钮条 | `cargo run -p showcase --bin ribbon_gallery --features ribbon -- qat` |
+| `mini_toolbar` | 迷你工具栏：拖动选择后就近浮出命令条（B/I/U/高亮/复制） | `cargo run -p showcase --bin ribbon_gallery --features ribbon -- mini_toolbar` |
+| `backstage` | 应用菜单：覆盖整窗的文件面板（左导航 + 内容页/命令页） | `cargo run -p showcase --bin ribbon_gallery --features ribbon -- backstage` |
+| `viewport` | 视口：可缩放/平移的 A4 文档页视图（屏幕↔文档坐标映射） | `cargo run -p showcase --bin viewport_gallery --features viewport -- viewport` |
+| `ruler` | 标尺刻度 + 拖拽方块吸附并显示参考线 | `cargo run -p showcase --bin viewport_gallery --features viewport -- ruler` |
+| `canvas_objects` | 画布对象工具：选区 / 缩放手柄 / 旋转手柄 / 对齐 / 分布 | `cargo run -p showcase --bin viewport_gallery --features viewport -- canvas_objects` |
 | `rich_clipboard` | 富剪贴板：同时写入纯文本 + HTML/RTF/CSV，粘贴后列出剪贴板上的所有格式 | `cargo run -p showcase --bin rich_clipboard` |
 | `rich_text` | 富文本：段落 + 行内运行模型，选区套用粗体/斜体/下划线/删除线/颜色，HTML 双向转换 + 剪贴板对接 | `cargo run -p showcase --bin rich_text` |
 | `ink` | Ink 笔迹：钢笔 / 荧光笔落笔（可开压感变宽），橡皮擦除，套索框选 + 撤销 / 清空 + 多图层 | `cargo run -p showcase --bin ink` |
@@ -116,8 +110,8 @@ cargo run -p showcase --bin <名称>
 | `task_pane` | 任务窗格：可停靠 / 可浮动侧边面板（内缘拖拽改宽 / 标题栏拖动 / ✕ 关闭 / 自动隐藏 / 页签组） | `cargo run -p showcase --bin task_pane` |
 | `canvas_a11y` | 画布语义：自绘对象暴露给辅助技术（合成子节点 / 阅读顺序 / 键盘与无障碍动作） | `cargo run -p showcase --bin canvas_a11y` |
 | `intl_text` | 国际文本排版：段落基准方向（`dir=auto`）与 `start`/`end` 对齐 + CJK 行首/行末禁则换行 | `cargo run -p showcase --bin intl_text` |
-| `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin formula_bar` |
-| `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin sheet_grid` |
+| `formula_bar` | 公式栏：名称框 + `fx` + 公式输入，绑定迷你单元格模型 | `cargo run -p showcase --bin spreadsheet_gallery --features spreadsheet -- formula_bar` |
+| `sheet_grid` | 电子表格网格：行列头 + 虚拟化单元格 + 矩形选区 + 填充柄，配合公式栏 | `cargo run -p showcase --bin spreadsheet_gallery --features spreadsheet -- sheet_grid` |
 | `page_view` | 文档页视图：多页 A4 分页画布 + 页眉页脚，配合视口缩放/平移 | `cargo run -p showcase --bin page_view` |
 
 ## 独立示例 crate
@@ -126,11 +120,11 @@ cargo run -p showcase --bin <名称>
 
 | crate | 说明 |
 |-------|------|
-| `image_showcase` | 图片加载 / 查看（多 bin） |
+| `image_showcase` | 图片加载 / 查看（gallery，`-- <demo>`） |
 | `list_showcase` | 列表 / 虚拟列表（多 bin） |
-| `text_showcase` | 文本 / 编辑相关（多 bin） |
-| `overlay_showcase` | 浮层 / Overlay（多 bin） |
-| `window_showcase` | 窗口能力（多 bin） |
+| `text_showcase` | 文本排版（gallery，`-- <demo>`） |
+| `overlay_showcase` | 浮层定位（gallery，`-- <demo>`） |
+| `window_showcase` | 窗口能力（gallery，`-- <demo>`） |
 | `tray` | 系统托盘（多 bin） |
 | `view_example` | 视图 / 布局（多 bin） |
 | `rgpui_story` | 组件 Storybook |
@@ -139,8 +133,8 @@ cargo run -p showcase --bin <名称>
 | `rgpui_term_basic` | 终端基础（`--bin basic`：多标签/搜索条/OSC 8/IME；`--bin external_io`：外接 IO 后端，无本地 PTY） |
 | `rgpui_term_integration` | 终端集成 |
 | `screen_capture` | 屏幕捕获 |
-| `webview` | WebView 集成 |
-| `layer_shell` | Wayland layer shell |
+| `webview` | WebView 集成（需 `--features webview`） |
+| `layer_shell` | Linux 面板窗口（Wayland layer-shell / X11 DOCK+strut） |
 | `tokio_example` | Tokio 异步集成 |
 
 运行独立示例：`cargo run -p <crate> [--bin <名称>]`。

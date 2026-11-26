@@ -1,23 +1,47 @@
-//! window_showcase 启动器：打印所含演示列表。
+//! window_showcase：合并示例，用 `-- <demo>` 选择具体演示。
 //!
-//! 本 crate 包含多个窗口管理演示 binary，请用 `--bin` 指定运行：
-//! - `window`：窗口类型与 prompt
-//! - `window_movable`：可移动开关组合
-//! - `window_positioning`：窗口定位
-//! - `window_shadow`：窗口阴影
-//! - `transparent`：透明背景窗口
-//! - `opacity`：窗口不透明度
-//! - `shadow`：阴影样式大全
-//! - `custom_title_bar`：自定义标题栏完整用法
+//! 可用 demo：window_movable / window_positioning / window_shadow / transparent / opacity / shadow；不带参数时默认运行 `window_movable`。
 
+#![cfg_attr(target_family = "wasm", no_main)]
+
+#[path = "bin/demos/opacity.rs"]
+mod opacity;
+#[path = "bin/demos/shadow.rs"]
+mod shadow;
+#[path = "bin/demos/transparent.rs"]
+mod transparent;
+#[path = "bin/demos/window_movable.rs"]
+mod window_movable;
+#[path = "bin/demos/window_positioning.rs"]
+mod window_positioning;
+#[path = "bin/demos/window_shadow.rs"]
+mod window_shadow;
+
+#[cfg(not(target_family = "wasm"))]
 fn main() {
-    println!("window_showcase 包含以下演示（用 --bin 指定）：");
-    println!("  cargo run -p window_showcase --bin window              # 窗口类型与prompt");
-    println!("  cargo run -p window_showcase --bin window_movable      # 可移动开关组合");
-    println!("  cargo run -p window_showcase --bin window_positioning  # 窗口定位");
-    println!("  cargo run -p window_showcase --bin window_shadow       # 窗口阴影");
-    println!("  cargo run -p window_showcase --bin transparent         # 透明背景窗口");
-    println!("  cargo run -p window_showcase --bin opacity             # 窗口不透明度");
-    println!("  cargo run -p window_showcase --bin shadow              # 阴影样式大全");
-    println!("  cargo run -p window_showcase --bin custom_title_bar  # 自定义标题栏完整用法");
+    run();
+}
+
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn start() {
+    rgpui_platform::web_init();
+    run();
+}
+
+fn run() {
+    let name = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "window_movable".to_string());
+    match name.as_str() {
+        "window_movable" => window_movable::run_example(),
+        "window_positioning" => window_positioning::run_example(),
+        "window_shadow" => window_shadow::run_example(),
+        "transparent" => transparent::run_example(),
+        "opacity" => opacity::run_example(),
+        "shadow" => shadow::run_example(),
+        _ => eprintln!(
+            "未知 demo：{name}。可用：window_movable / window_positioning / window_shadow / transparent / opacity / shadow"
+        ),
+    }
 }

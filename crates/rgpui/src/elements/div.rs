@@ -697,6 +697,10 @@ impl Interactivity {
 
     /// 将此元素的边界设置为平台窗口的窗口控制区域。
     /// [`InteractiveElement::window_control_area`] 的命令式 API 等价物。
+    ///
+    /// **仅 Windows / Web 生效**：其它平台忽略该标记，没有返回值或错误提示。
+    /// 跨平台代码请改用显式鼠标事件 + `Window::start_window_move` 等 API，
+    /// 详见 [`WindowControlArea`] 的文档。
     pub fn window_control_area(&mut self, area: WindowControlArea) {
         self.window_control = Some(area);
     }
@@ -1188,6 +1192,8 @@ pub trait InteractiveElement: Sized {
 
     /// 将此元素的边界设置为平台窗口的窗口控制区域。
     /// [`Interactivity::window_control_area`] 的流式 API 等价物。
+    ///
+    /// **仅 Windows / Web 生效**，其它平台静默忽略；跨平台做法见 [`WindowControlArea`]。
     fn window_control_area(mut self, area: WindowControlArea) -> Self {
         self.interactivity().window_control_area(area);
         self

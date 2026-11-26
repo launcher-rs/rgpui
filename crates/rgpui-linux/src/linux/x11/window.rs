@@ -7,7 +7,7 @@ use rgpui::{
     Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow,
     Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, ScaledPixels, Scene, Size,
     Tiling, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
-    WindowDecorations, WindowKind, WindowParams, px,
+    WindowControls, WindowDecorations, WindowKind, WindowParams, px,
 };
 use rgpui_wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig};
 
@@ -204,6 +204,13 @@ fn strut_partial(
 
 /// `_MOTIF_WM_HINTS` 第一个值（hints mask）：声明本属性要改装饰
 const MWM_HINTS_DECORATIONS: u32 = 1 << 1;
+/// Motif functions 位对应的 mask，声明要改 WM 功能位。
+const MWM_HINTS_FUNCTIONS: u32 = 1 << 0;
+const MWM_FUNC_RESIZE: u32 = 1 << 1;
+const MWM_FUNC_MOVE: u32 = 1 << 2;
+const MWM_FUNC_MINIMIZE: u32 = 1 << 3;
+const MWM_FUNC_MAXIMIZE: u32 = 1 << 4;
+const MWM_FUNC_CLOSE: u32 = 1 << 5;
 /// Motif 的装饰位：`MWM_DECOR_ALL` 是「其余位没置 1 的项全都要」的简写。
 /// 单个装饰项（如 `MWM_DECOR_TITLE`）在这里用不上 —— mutter 只判断「decorations
 /// 为 0 就完全不加框架」，个别位它不理，所以隐藏时清零整个字段，效果是去掉原生框架，
@@ -212,16 +219,40 @@ const MWM_DECOR_ALL: u32 = 1 << 0;
 
 /// 合成 `_MOTIF_WM_HINTS` 的 5 个值：hints、functions、decorations、input_mode、status。
 ///
-/// functions 填 0 表示不动 WM 功能位；客户端装饰下服务端本来什么都不画，
-/// 装饰位保持 0，标题栏可见性对它没有意义。
-fn motif_hints(decorations: WindowDecorations, titlebar_visible: bool) -> [u32; 5] {
+/// functions 位让 `WindowOptions::{is_movable,is_resizable,is_minimizable}` 在尊重
+/// Motif 的窗口管理器上真正生效（Windows 侧靠 WS 位，语义对齐）；客户端装饰下
+/// 服务端本来什么都不画，装饰位保持 0，标题栏可见性对它没有意义。
+fn motif_hints(
+    decorations: WindowDecorations,
+    titlebar_visible: bool,
+    is_movable: bool,
+    is_resizable: bool,
+    is_minimizable: bool,
+) -> [u32; 5] {
     let bits = match decorations {
         WindowDecorations::Client => 0,
         WindowDecorations::Server if titlebar_visible => MWM_DECOR_ALL,
         WindowDecorations::Server => 0,
     };
 
-    [MWM_HINTS_DECORATIONS, 0, bits, 0, 0]
+    let mut functions = MWM_FUNC_CLOSE;
+    if is_movable {
+        functions |= MWM_FUNC_MOVE;
+    }
+    if is_resizable {
+        functions |= MWM_FUNC_RESIZE | MWM_FUNC_MAXIMIZE;
+    }
+    if is_minimizable {
+        functions |= MWM_FUNC_MINIMIZE;
+    }
+
+    [
+        MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS,
+        functions,
+        bits,
+        0,
+        0,
+    ]
 }
 
 #[derive(Debug)]
@@ -433,6 +464,10 @@ pub struct X11WindowState {
     decorations: WindowDecorations,
     /// 原生标题栏是否可见；只影响服务端装饰下的 Motif 装饰位
     titlebar_visible: bool,
+    /// 应用请求的窗口能力：写入 Motif functions 位，并反映在 window_controls() 上
+    is_movable: bool,
+    is_resizable: bool,
+    is_minimizable: bool,
     edge_constraints: Option<EdgeConstraints>,
     /// 独占区域宽度（逻辑像素），非正值表示不保留
     exclusive_zone: Pixels,
@@ -958,11 +993,20 @@ impl X11WindowState {
             // This prevents the window from being resized larger than what the GPU can render.
             let max_texture_size = renderer.max_texture_size();
             let mut size_hints = WmSizeHints::new();
-            if let Some(size) = params.window_min_size {
-                size_hints.min_size =
-                    Some((f32::from(size.width) as i32, f32::from(size.height) as i32));
+            if params.is_resizable {
+                if let Some(size) = params.window_min_size {
+                    size_hints.min_size =
+                        Some((f32::from(size.width) as i32, f32::from(size.height) as i32));
+                }
+                size_hints.max_size = Some((max_texture_size as i32, max_texture_size as i32));
+            } else {
+                // is_resizable:false：min=max=初始尺寸，让窗口管理器真正禁止缩放，
+                // 而不只是 Motif functions 位（很多 WM 不理那个位）
+                let size = params.bounds.size;
+                let wh = (f32::from(size.width) as i32, f32::from(size.height) as i32);
+                size_hints.min_size = Some(wh);
+                size_hints.max_size = Some(wh);
             }
-            size_hints.max_size = Some((max_texture_size as i32, max_texture_size as i32));
             check_reply(
                 || {
                     format!(
@@ -1044,6 +1088,9 @@ impl X11WindowState {
                 client_side_decorations_supported,
                 decorations: WindowDecorations::Server,
                 titlebar_visible: true,
+                is_movable: params.is_movable,
+                is_resizable: params.is_resizable,
+                is_minimizable: params.is_minimizable,
                 last_insets: [0, 0, 0, 0],
                 edge_constraints: None,
                 exclusive_zone,
@@ -1612,7 +1659,13 @@ impl X11WindowStatePtr {
     /// Motif 只认这一份属性，`request_decorations` 与 `set_titlebar_visible`
     /// 改的是同一个字段，所以两边都必须走这里重新合成，否则后写的会覆盖先写的
     fn apply_motif_hints(&self, state: &X11WindowState) -> bool {
-        let hints_data = motif_hints(state.decorations, state.titlebar_visible);
+        let hints_data = motif_hints(
+            state.decorations,
+            state.titlebar_visible,
+            state.is_movable,
+            state.is_resizable,
+            state.is_minimizable,
+        );
 
         let Some(()) = check_reply(
             || "X11 ChangeProperty for _MOTIF_WM_HINTS failed.",
@@ -1705,6 +1758,16 @@ impl X11WindowStatePtr {
         state.renderer.update_transparency(is_transparent);
         state.appearance = appearance;
         drop(state);
+        let callback = self.callbacks.borrow_mut().appearance_changed.take();
+        if let Some(mut fun) = callback {
+            fun();
+            self.callbacks.borrow_mut().appearance_changed = Some(fun);
+        }
+    }
+
+    /// 只触发 appearance_changed 回调，不改主题明暗。
+    /// 用于滚动条自动隐藏等设置变更时让已开窗口重读。
+    pub fn notify_appearance_changed(&self) {
         let callback = self.callbacks.borrow_mut().appearance_changed.take();
         if let Some(mut fun) = callback {
             fun();
@@ -2207,6 +2270,16 @@ impl PlatformWindow for X11Window {
         self.0.state.borrow().fullscreen
     }
 
+    // X11 有周期刷新循环兜底（x11/client.rs 的 start_refresh_loop），但核心的
+    // request_frame() 此前走 trait 默认空实现，纯定时动画只能等下一次周期刷新。
+    // 这里把请求转成一次强制刷新，让动画按请求的节奏推进，与 Wayland 对齐。
+    fn request_frame(&self) {
+        self.0.refresh(RequestFrameOptions {
+            require_presentation: false,
+            force_render: false,
+        });
+    }
+
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
         self.0.callbacks.borrow_mut().request_frame = Some(callback);
     }
@@ -2240,6 +2313,9 @@ impl PlatformWindow for X11Window {
     }
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 核心只在 Windows / Web 注册该回调（见 rgpui/src/window.rs 的注册处）。
+        // X11 的对应能力由窗口管理器处理（服务端装饰）或由 TitleBar 的显式
+        // 鼠标事件接管（客户端装饰），这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {
@@ -2434,13 +2510,26 @@ impl PlatformWindow for X11Window {
         }
     }
 
+    /// 让框架 `TitleBar` 按应用请求收敛按钮：设了 `is_minimizable: false` 就不画
+    /// 最小化按钮，而不是画出点击无效（或被 WM 拒绝）的按钮。
+    fn window_controls(&self) -> WindowControls {
+        let state = self.0.state.borrow();
+        WindowControls {
+            fullscreen: true,
+            maximize: state.is_resizable,
+            minimize: state.is_minimizable,
+            window_menu: true,
+        }
+    }
+
     fn request_decorations(&self, mut decorations: rgpui::WindowDecorations) {
         let mut state = self.0.state.borrow_mut();
 
         if matches!(decorations, rgpui::WindowDecorations::Client)
             && !state.client_side_decorations_supported
         {
-            log::info!(
+            // 默认日志级别是 error，info 对最终用户不可见；回退会改变窗口外观
+            log::warn!(
                 "x11: no compositor present, falling back to server-side window decorations"
             );
             decorations = rgpui::WindowDecorations::Server;
@@ -2574,10 +2663,21 @@ mod tests {
 
     #[test]
     fn motif_hints_keep_all_decorations_while_titlebar_visible() {
-        // 没主动隐藏标题栏时，写出的属性与实现本方法之前完全一致
+        // 没主动隐藏标题栏时，装饰位仍为 MWM_DECOR_ALL；functions 位新增了
+        // 应用请求的 move/resize/min/max，关闭位恒开。
         assert_eq!(
-            motif_hints(WindowDecorations::Server, true),
-            [MWM_HINTS_DECORATIONS, 0, MWM_DECOR_ALL, 0, 0]
+            motif_hints(WindowDecorations::Server, true, true, true, true),
+            [
+                MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS,
+                MWM_FUNC_CLOSE
+                    | MWM_FUNC_MOVE
+                    | MWM_FUNC_RESIZE
+                    | MWM_FUNC_MAXIMIZE
+                    | MWM_FUNC_MINIMIZE,
+                MWM_DECOR_ALL,
+                0,
+                0
+            ]
         );
     }
 
@@ -2585,8 +2685,18 @@ mod tests {
     fn motif_hints_clear_decoration_bits_when_titlebar_hidden() {
         // 隐藏标题栏 = 清空装饰位：mutter 只判断装饰位是否为 0，个别装饰位它不理
         assert_eq!(
-            motif_hints(WindowDecorations::Server, false),
-            [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+            motif_hints(WindowDecorations::Server, false, true, true, true),
+            [
+                MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS,
+                MWM_FUNC_CLOSE
+                    | MWM_FUNC_MOVE
+                    | MWM_FUNC_RESIZE
+                    | MWM_FUNC_MAXIMIZE
+                    | MWM_FUNC_MINIMIZE,
+                0,
+                0,
+                0
+            ]
         );
     }
 
@@ -2594,9 +2704,40 @@ mod tests {
     fn motif_hints_ask_for_no_decorations_under_csd() {
         for titlebar_visible in [true, false] {
             assert_eq!(
-                motif_hints(WindowDecorations::Client, titlebar_visible),
-                [MWM_HINTS_DECORATIONS, 0, 0, 0, 0]
+                motif_hints(
+                    WindowDecorations::Client,
+                    titlebar_visible,
+                    true,
+                    true,
+                    true
+                ),
+                [
+                    MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS,
+                    MWM_FUNC_CLOSE
+                        | MWM_FUNC_MOVE
+                        | MWM_FUNC_RESIZE
+                        | MWM_FUNC_MAXIMIZE
+                        | MWM_FUNC_MINIMIZE,
+                    0,
+                    0,
+                    0
+                ]
             );
         }
+    }
+
+    #[test]
+    fn motif_hints_drop_functions_when_app_disallows_them() {
+        let hints = motif_hints(WindowDecorations::Server, true, false, false, false);
+        assert_eq!(
+            hints,
+            [
+                MWM_HINTS_DECORATIONS | MWM_HINTS_FUNCTIONS,
+                MWM_FUNC_CLOSE,
+                MWM_DECOR_ALL,
+                0,
+                0
+            ]
+        );
     }
 }

@@ -135,7 +135,11 @@ pub struct WaylandWindowState {
     in_progress_configure: Option<InProgressConfigure>,
     resize_throttle: bool,
     in_progress_window_controls: Option<WindowControls>,
+    /// 合成器上报的能力（WmCapabilities）
     window_controls: WindowControls,
+    /// 应用请求的能力：与合成器能力取交集后对外报告，避免画出点了没反应的按钮
+    is_resizable: bool,
+    is_minimizable: bool,
     client_inset: Option<Pixels>,
     accesskit_adapter: Option<accesskit_unix::Adapter>,
 }
@@ -587,6 +591,8 @@ impl WaylandWindowState {
             renderer_presented: false,
             in_progress_window_controls: None,
             window_controls: WindowControls::default(),
+            is_resizable: options.is_resizable,
+            is_minimizable: options.is_minimizable,
             client_inset: None,
             accesskit_adapter: None,
         })
@@ -1540,6 +1546,15 @@ impl WaylandWindowStatePtr {
         }
     }
 
+    /// 只触发 appearance_changed 回调，不改主题明暗（用于滚动条策略变更）。
+    pub fn notify_appearance_changed(&self) {
+        let callback = self.callbacks.borrow_mut().appearance_changed.take();
+        if let Some(mut fun) = callback {
+            fun();
+            self.callbacks.borrow_mut().appearance_changed = Some(fun);
+        }
+    }
+
     pub fn set_button_layout(&self) {
         let callback = self.callbacks.borrow_mut().button_layout_changed.take();
         if let Some(mut fun) = callback {
@@ -1878,6 +1893,9 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
+        // 核心只在 Windows / Web 注册该回调（见 rgpui/src/window.rs 的注册处）。
+        // Wayland 是客户端装饰，拖拽与窗口按钮由 TitleBar 的显式鼠标事件 +
+        // start_window_move / zoom_window 接管，这里保留 trait 契约的空实现。
     }
 
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {
@@ -2078,7 +2096,8 @@ impl PlatformWindow for WaylandWindow {
     fn set_exclusive_zone(&self, zone: Pixels) {
         let state = self.borrow();
         let Some(layer_surface) = state.surface_state.layer_surface() else {
-            log::debug!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型");
+            // 请求了保留区域却完全无效，默认日志级别必须看得见
+            log::warn!("独占区域只对 layer-shell 窗口有效，当前窗口不是该类型，请求已忽略");
             return;
         };
         layer_surface.set_exclusive_zone(f32::from(zone) as i32);
@@ -2090,7 +2109,7 @@ impl PlatformWindow for WaylandWindow {
     fn set_exclusive_edge(&self, edge: Anchor) {
         let state = self.borrow();
         let Some(layer_surface) = state.surface_state.layer_surface() else {
-            log::debug!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型");
+            log::warn!("独占边缘只对 layer-shell 窗口有效，当前窗口不是该类型，请求已忽略");
             return;
         };
         layer_surface.set_exclusive_edge(super::layer_shell::wayland_anchor(edge));
@@ -2117,7 +2136,9 @@ impl PlatformWindow for WaylandWindow {
             }
             None => {
                 if matches!(decorations, WindowDecorations::Server) {
-                    log::info!(
+                    // 默认日志级别是 error，info 对最终用户不可见；装饰模式回退会
+                    // 直接改变窗口外观（自绘标题栏 vs 系统框架），必须能看见。
+                    log::warn!(
                         "Server-side decorations requested, but the Wayland server does not support them. Falling back to client-side decorations."
                     );
                 }
@@ -2128,7 +2149,12 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn window_controls(&self) -> WindowControls {
-        self.borrow().window_controls
+        let state = self.borrow();
+        WindowControls {
+            maximize: state.window_controls.maximize && state.is_resizable,
+            minimize: state.window_controls.minimize && state.is_minimizable,
+            ..state.window_controls
+        }
     }
 
     fn set_client_inset(&self, inset: Pixels) {

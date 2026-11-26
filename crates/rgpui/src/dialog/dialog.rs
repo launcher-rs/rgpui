@@ -483,26 +483,29 @@ impl RenderOnce for Dialog {
                             return this;
                         }
 
-                        this.window_control_area(WindowControlArea::Drag)
-                            .on_any_mouse_down({
-                                let on_cancel = on_cancel.clone();
-                                let on_close = on_close.clone();
-                                move |event, window, cx| {
-                                    if event.position.y < TITLE_BAR_HEIGHT {
-                                        return;
-                                    }
+                        // Drag 命中区只有 Windows 后端会读取；其它平台遮罩的
+                        // 点击关闭由下面的 on_any_mouse_down 处理。
+                        this.when(cfg!(target_os = "windows"), |this| {
+                            this.window_control_area(WindowControlArea::Drag)
+                        })
+                        .on_any_mouse_down({
+                            let on_cancel = on_cancel.clone();
+                            let on_close = on_close.clone();
+                            move |event, window, cx| {
+                                if event.position.y < TITLE_BAR_HEIGHT {
+                                    return;
+                                }
 
-                                    cx.stop_propagation();
-                                    if self.props.overlay_closable
-                                        && event.button == MouseButton::Left
-                                    {
-                                        if on_cancel(&ClickEvent::default(), window, cx) {
-                                            on_close(&ClickEvent::default(), window, cx);
-                                            window.close_dialog(cx);
-                                        }
+                                cx.stop_propagation();
+                                if self.props.overlay_closable && event.button == MouseButton::Left
+                                {
+                                    if on_cancel(&ClickEvent::default(), window, cx) {
+                                        on_close(&ClickEvent::default(), window, cx);
+                                        window.close_dialog(cx);
                                     }
                                 }
-                            })
+                            }
+                        })
                     })
                     .child(
                         v_flex()

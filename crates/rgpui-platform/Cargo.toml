@@ -14,7 +14,10 @@ workspace = true
 path = "src/rgpui_platform.rs"
 
 [features]
-default = []
+# macOS 后端没有 font-kit 时会静默退化成 NoopTextSystem —— 窗口能开但所有文字为空，
+# 而默认日志级别看不到那条 warn。这里默认开启，保证只依赖 rgpui-platform 的下游
+# 在 macOS 上也能正常渲染文字；该 feature 只在 macOS 目标上转发给 rgpui-macos。
+default = ["font-kit"]
 multithreaded = ["rgpui-web/multithreaded"]
 font-kit = ["rgpui-macos/font-kit"]
 # test-support 要把各平台 crate 一起带上：平台侧的 render_to_image 等窗口方法
@@ -40,6 +43,11 @@ rgpui = { workspace = true, features = ["windows-manifest"] }
 # 若不在此开启，Linux 上会编译出无 X11/Wayland 的空后端，程序静默回落到 Headless，
 # 既不创建窗口也不报错。同时开启 rgpui 的 wayland/x11，否则 guess_compositor()
 # 读不到 DISPLAY/WAYLAND_DISPLAY 而恒返回 "Headless"。
+#
+# 注意：这里**强制双后端全开**，因此本 crate 的 `wayland` / `x11` feature 在 Linux
+# 上目前只是转发标记，不能真正裁剪后端（关掉 x11 仍会编进来）。这是上一轮审计
+# （docs/linux-platform-audit.md §2.1）为杜绝静默 Headless 做的中央修复，刻意保留。
+# 要真正按部署场景裁剪需要同时改这里和 feature 默认值，并逐一验证组合。
 rgpui-linux = { workspace = true, features = ["wayland", "x11"] }
 rgpui = { workspace = true, features = ["wayland", "x11"] }
 

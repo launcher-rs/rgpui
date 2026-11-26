@@ -3,11 +3,24 @@ name = "webview_example"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
+
+[features]
+# wry / rgpui-webview 链需要各平台 SDK（Linux 的 WebKitGTK 等）。设为可选，
+# 让默认 `cargo check --workspace` 不再把这条重依赖编进每次构建；
+# CI 用 `cargo check -p webview_example --features webview` 单独覆盖。
+webview = ["dep:wry", "rgpui/webview"]
+
+[[bin]]
+name = "webview_example"
+path = "src/main.rs"
+required-features = ["webview"]
+test = false
 
 [dependencies]
-rgpui = { workspace = true, features = ["webview"] }
+rgpui.workspace = true
 rgpui-platform.workspace = true
-wry = "0.57.3"
+wry = { version = "0.57.3", optional = true }
 
 [lints]
 workspace = true

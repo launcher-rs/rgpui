@@ -75,10 +75,14 @@ Comment=Auto-start application: {}",
         }
     }
 
-    /// 获取 XDG autostart 目录路径
+    /// 获取 XDG autostart 目录路径：按 XDG Base Directory 规范优先读
+    /// `XDG_CONFIG_HOME`，未设置或为空时才回退 `$HOME/.config`。
     fn get_autostart_dir(&self) -> Result<PathBuf> {
-        let home = std::env::var("HOME")?;
-        let autostart_dir = PathBuf::from(home).join(".config/autostart");
+        let config_home = match std::env::var_os("XDG_CONFIG_HOME") {
+            Some(value) if !value.is_empty() => PathBuf::from(value),
+            _ => PathBuf::from(std::env::var("HOME")?).join(".config"),
+        };
+        let autostart_dir = config_home.join("autostart");
 
         if !autostart_dir.exists() {
             fs::create_dir_all(&autostart_dir)?;

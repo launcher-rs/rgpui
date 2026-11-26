@@ -48,6 +48,7 @@ description: rgpui 框架知识，涵盖操作/快捷键、异步/后台任务�
 | 对话/AI-Chat | [chat.md](references/chat.md) | `Message`、`ChatView`、`Sender`、`ThoughtChain`、`MessageScroller`、`Bubble` |
 | 平台抽象 | [platform.md](references/platform.md) | `Platform`、`PlatformWindow`、`App` 包装、托盘/权限/电源/热键 |
 | Windows 平台 | [windows.md](references/windows.md) | 托盘、鼠标穿透、Mica、自启动、焦点窗口、`WM_USER` 消息 |
+| Linux 平台限制 | [../../docs/linux-api-parity-audit.md](../../docs/linux-api-parity-audit.md) | 跨平台 API 的 Linux no-op、X11/Wayland 能力不对等、静默降级、第二轮审计清单（含 macOS 维度） |
 | 可选功能组件 | [feature-components.md](references/feature-components.md) | `charts`/`effects`/`qr-code`/`webview`/`dom-backend` feature |
 | FPS 浮层 | [fps-hud.md](references/fps-hud.md) | `FpsHudState`、`FpsHud` |
 | Markdown | [markdown.md](references/markdown.md) | `rgpui-markdown`：`Markdown`、`MarkdownState` 流式增量、`MarkdownSelectionState` 文档级选区与复制、`RichBlock`、`CodeBlock`、`latex`/`mermaid`、`extract_headings` |
@@ -82,6 +83,7 @@ description: rgpui 框架知识，涵盖操作/快捷键、异步/后台任务�
 - [tray.md](references/tray.md) — 系统托盘图标/菜单/事件、隐藏到托盘
 - [platform.md](references/platform.md) — `Platform`/`PlatformWindow` trait、`App` 包装、托盘/权限/电源/热键/文件对话框
 - [windows.md](references/windows.md) — Windows 后端：托盘、鼠标穿透、Mica、自启动、焦点窗口、`WM_USER` 消息
+- [linux-api-parity-audit.md](../../docs/linux-api-parity-audit.md) — Linux（含 macOS）平台契约审计：哪些「跨平台」API 实际只有某平台生效、静默降级与文档口径
 
 **组件 API：**
 - [scroll.md](references/scroll.md) — `Scrollable`、`Scrollbar`、`ScrollHandle`、滚动对齐

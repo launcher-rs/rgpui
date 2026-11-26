@@ -4,9 +4,9 @@
 
 ## 环境要求
 
-- **Rust**：1.75.0 或更新版本
-- **操作系统**：Windows 10+、macOS 12+、Linux（需安装依赖）
-- **GPU**：支持 Vulkan/Metal/WebGPU 的显卡
+- **Rust**：1.88 或更新版本（edition 2024）
+- **操作系统**：Windows 10+、macOS 12+（代码保留、暂无设备验证）、Linux（X11/Wayland，需装依赖）
+- **GPU**：支持 Vulkan/Metal/WebGPU 的显卡（软件渲染可用 llvmpipe/lavapipe）
 
 ## 创建项目
 
@@ -15,55 +15,70 @@ cargo new my_rgpui_app
 cd my_rgpui_app
 ```
 
-在 `Cargo.toml` 中添加依赖：
+在 `Cargo.toml` 中添加依赖。**必须同时依赖 `rgpui-platform` 并用它启动应用**：
+单独依赖 `rgpui` 在 Linux 上会因 feature 未开启而静默退化成无头后端（编译成功、
+没有窗口、零报错）。
 
 ```toml
 [dependencies]
 rgpui = { path = "../path/to/rgpui" }
+rgpui-platform = { path = "../path/to/rgpui/crates/rgpui-platform" }
 # 或者使用 git 依赖
-# rgpui = { git = "https://github.com/your-org/rgpui.git" }
+# rgpui = { git = "https://github.com/launcher-rs/rgpui.git" }
+# rgpui-platform = { git = "https://github.com/launcher-rs/rgpui.git" }
 ```
+
+Linux 上还需要系统库（用于 webview 示例，影响 `cargo check --workspace`）：
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev
+```
+
+细节见 [AGENTS.md](../../AGENTS.md) 的「Linux 端构建前置」。
 
 ## 第一个应用
 
 创建 `src/main.rs`：
 
 ```rust
-use rgpui::prelude::*;
-use rgpui::{div, App, Window};
+use rgpui::{
+    App, Bounds, Context, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions,
+    div, prelude::*, px, size,
+};
+use rgpui_platform::application;
 
 fn main() {
-    App::new().run(|cx| {
-        // 创建第一个窗口
-        cx.open_window(Window::default(), |window, cx| {
-            // 替换窗口的根视图
-            window.replace_root_view(cx, |window, cx| {
-                // 创建一个简单的文本视图
-                HelloView { text: "Hello, rgpui!".into() }
-            });
-        });
+    application().run(|cx: &mut App| {
+        let bounds = Bounds::centered(None, size(px(500.0), px(400.0)), cx);
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Hello rgpui".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            |_, cx| cx.new(|_| HelloView {
+                text: "Hello, rgpui!".into(),
+            }),
+        );
     });
 }
 
-/// 一个简单的视图结构体
 struct HelloView {
     text: SharedString,
 }
 
-/// 实现 Render trait，定义视图的渲染内容
 impl Render for HelloView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
             .justify_center()
-            .w_full()
-            .h_full()
-            .child(
-                div()
-                    .text_lg()
-                    .child(self.text.clone())
-            )
+            .size_full()
+            .text_xl()
+            .child(self.text.clone())
     }
 }
 ```
@@ -78,36 +93,26 @@ cargo run
 
 ## 代码解析
 
-### App::new().run()
+### `application().run()`
 
-这是 rgpui 应用的入口点。`run` 方法接收一个闭包，闭包参数 `cx` 是 `App` 的引用。
-在闭包中，你可以：
+这是应用入口。`rgpui_platform::application()` 会按当前平台选择后端（Windows / macOS /
+Linux 的 Wayland 或 X11 / Web），并把闭包里的 `cx: &mut App` 交给应用。传 `rgpui` 自带
+的 `Application` 而绕过 `rgpui-platform` 会漏掉平台后端的选择。
 
-- 打开窗口（`cx.open_window`）
-- 设置全局状态（`cx.set_global`）
-- 注册快捷键（`cx.bind_keys`）
+### `cx.open_window(options, build_view)`
 
-### Window 和 View
+`open_window` 接收 [`WindowOptions`] 和一个构建根视图的闭包。视图通过 `cx.new(...)` 创建成
+`Entity<T>`，由框架持有；旧版的 `Window::default()` / `window.replace_root_view(...)` 写法
+已不存在。
 
-- **Window**：代表一个操作系统窗口，包含标题栏、菜单等
-- **View**：窗口中的内容，通过 `Render` trait 定义其 UI 结构
+### `Render` trait
 
-### Render trait
-
-每个视图都需要实现 `Render` trait：
-
-```rust
-impl Render for MyView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // 返回一个或多个元素
-    }
-}
-```
-
-`render` 方法在每次视图需要重新绘制时被调用。
+每个视图实现 `Render`，`render` 在视图需要重绘时被调用，返回实现 `IntoElement` 的元素树
+（通常用 `div()` 起手）。`Context<Self>` 提供 `cx.listener(...)`、`cx.notify()` 等视图级能力。
 
 ## 下一步
 
 - [实体系统](./02-entity-system.md) - 了解 Entity、Context 与生命周期管理
 - [订阅系统](./03-subscription.md) - 学习事件订阅和组件间通信
 - [快捷键系统](./04-keymap.md) - 为应用添加键盘快捷键
+- [平台契约审计](../../docs/linux-api-parity-audit.md) - 哪些「跨平台」API 实际只有某平台生效

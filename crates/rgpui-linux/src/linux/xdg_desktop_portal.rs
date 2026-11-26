@@ -21,6 +21,8 @@ pub enum Event {
     ButtonLayout(String),
     /// 系统「减少动态效果」无障碍设置变化
     ReduceMotion(bool),
+    /// GNOME 的 overlay-scrolling（浮层/自动隐藏滚动条）变化
+    OverlayScrolling(bool),
 }
 
 /// XDG 桌面门户事件源
@@ -43,7 +45,15 @@ impl XDPEventSource {
 
         executor
             .spawn(async move {
-                let settings = Settings::new().await?;
+                // 连不上 portal 时外观 / 光标主题 / 减少动效都会停在默认值；
+                // 原先 `?` 直接结束 future，默认日志级别下用户完全看不到原因。
+                let settings = match Settings::new().await {
+                    Ok(settings) => settings,
+                    Err(error) => {
+                        log::warn!("无法连接 xdg-desktop-portal 设置服务，系统的外观/光标/动效设置将不会同步：{error:#}");
+                        return Ok(());
+                    }
+                };
 
                 if let Ok(initial_appearance) = settings.color_scheme().await {
                     sender.send(Event::WindowAppearance(
@@ -74,6 +84,36 @@ impl XDPEventSource {
 
                 if let Some(reduce_motion) = read_reduce_motion(&settings).await {
                     sender.send(Event::ReduceMotion(reduce_motion))?;
+                }
+
+                // GNOME 的 overlay-scrolling：true 表示滚动条默认隐藏、滚动时才浮现，
+                // 对应主题的 scrollbar_show = AutoHide。KDE 用另一套键，这里只接 GNOME
+                // 的标准键；其它 DE 保持默认 false（Hover）。
+                if let Ok(overlay) = settings
+                    .read::<bool>("org.gnome.desktop.interface", "overlay-scrolling")
+                    .await
+                {
+                    log::info!("GNOME overlay-scrolling 初值: {overlay}");
+                    sender.send(Event::OverlayScrolling(overlay))?;
+                }
+                if let Ok(mut overlay_changed) = settings
+                    .receive_setting_changed_with_args::<bool>(
+                        "org.gnome.desktop.interface",
+                        "overlay-scrolling",
+                    )
+                    .await
+                {
+                    let sender = sender.clone();
+                    background
+                        .spawn(async move {
+                            while let Some(overlay) = overlay_changed.next().await {
+                                let overlay = overlay?;
+                                log::info!("GNOME overlay-scrolling 变更: {overlay}");
+                                sender.send(Event::OverlayScrolling(overlay))?;
+                            }
+                            anyhow::Ok(())
+                        })
+                        .detach();
                 }
 
                 if let Ok(mut cursor_theme_changed) = settings
@@ -255,8 +295,9 @@ fn window_appearance_from_color_scheme(cs: ColorScheme) -> WindowAppearance {
 /// `enable-animations`（语义相反）。两者都读不到时返回 `None`，由调用方保持平台侧
 /// 默认值（动画开启）。
 ///
-/// 注：该值只在创建窗口时被核心层读取（`App::sync_reduce_motion_from_platform`），
-/// 因此下面的变更事件只影响其后新建的窗口，不热切换已开窗口。
+/// 注：核心层只在创建窗口时同步一次（`App::sync_reduce_motion_from_platform`），
+/// 目前没有「平台设置变更 → 已开窗口重读」的通知通道，因此下面的变更事件只影响
+/// 其后新建的窗口；系统里切换「减少动态效果」后需重启应用才对所有窗口生效。
 async fn read_reduce_motion(settings: &Settings) -> Option<bool> {
     if let Ok(reduced) = settings
         .read::<u32>("org.freedesktop.appearance", "reduced-motion")

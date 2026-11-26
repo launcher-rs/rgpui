@@ -3,6 +3,12 @@ name = "rgpui_term_integration"
 version = "0.1.0"
 edition = "2024"
 publish = false
+autobins = false
+
+[[bin]]
+name = "rgpui_term_integration"
+path = "src/main.rs"
+test = false
 
 [dependencies]
 rgpui = { workspace = true, features = ["bundled-themes"] }

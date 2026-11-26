@@ -57,17 +57,39 @@ impl MacPermissions {
         PermissionStatus::Unavailable
     }
 
-    /// 检查输入监控权限
+    /// 检查输入监控权限。
+    /// macOS 的输入监控（监听其它应用的按键）是独立的 TCC 类别，
+    /// 不能借辅助功能权限代替 —— 此前两者被混为一谈，UI 会误报已授权。
     fn check_input_monitoring_permission(&self) -> PermissionStatus {
-        // 输入监控权限通常与辅助功能权限相同
-        self.check_accessibility_permission()
+        #[cfg(target_os = "macos")]
+        {
+            // SAFETY: CGPreflightListenEventAccess 只查询 TCC 授权状态，不访问用户数据
+            if unsafe { input_monitoring::CGPreflightListenEventAccess() } {
+                PermissionStatus::Granted
+            } else {
+                PermissionStatus::Denied
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        PermissionStatus::Unavailable
+    }
+
+    /// 请求输入监控权限（弹出系统 TCC 授权框）
+    pub fn request_input_monitoring_permission() {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            input_monitoring::CGRequestListenEventAccess();
+        }
     }
 
     /// 请求辅助功能权限
     pub fn request_accessibility_permission() {
         unsafe {
-            // 使用 AXIsProcessTrustedWithOptions 请求权限
-            let key = accessibility::kAXTrustedCheckOptionPrompt as *const std::ffi::c_void;
+            // 使用 AXIsProcessTrustedWithOptions 请求权限。
+            // AX 常量在部分 SDK / deployment target 下不是可链接符号，直接构造字面量。
+            let prompt_key = core_foundation::string::CFString::new("AXTrustedCheckOptionPrompt");
+            let key = core_foundation::base::TCFType::as_concrete_TypeRef(&prompt_key)
+                as *const std::ffi::c_void;
             let value = core_foundation::boolean::kCFBooleanTrue as *const std::ffi::c_void;
             accessibility::AXIsProcessTrustedWithOptions(
                 core_foundation::dictionary::CFDictionaryCreate(
@@ -86,14 +108,11 @@ impl MacPermissions {
 // 辅助功能 API 绑定
 mod accessibility {
     use core_foundation::dictionary::CFDictionaryRef;
-    use core_foundation::string::CFStringRef;
 
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
         pub fn AXIsProcessTrusted() -> bool;
         pub fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
-
-        pub static kAXTrustedCheckOptionPrompt: CFStringRef;
     }
 }
 
@@ -102,5 +121,14 @@ mod screen_capture {
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
         pub fn CGPreflightScreenCaptureAccess() -> bool;
+    }
+}
+
+// 输入监控权限 API 绑定（独立于辅助功能）
+mod input_monitoring {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        pub fn CGPreflightListenEventAccess() -> bool;
+        pub fn CGRequestListenEventAccess() -> bool;
     }
 }

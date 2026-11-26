@@ -34,7 +34,20 @@ cx.open_window(
 )
 ```
 
-示例：`cargo run -p showcase --bin title_bar`（若存在）/ `hello_world` 等基础示例。
+示例：`cargo run -p window_showcase --bin custom_title_bar`（真实的自绘标题栏示例）。
+
+### 系统装饰不可用时的自动补画
+
+普通窗口（`WindowOptions::window_decorations` 保持 `None`）在其他平台由系统画标题栏。
+Linux/Wayland 上 GNOME/Mutter 不提供 `zxdg_decoration_manager_v1`，请求服务端装饰
+会回退为客户端装饰；框架检测到「期望系统装饰但实际是客户端装饰」时，会在根元素上方
+自动插入一个默认标题栏（`SystemTitleBar`，带标题文字与标准窗口控制按钮），避免出现
+无标题栏窗口。可用 `cargo run -p showcase --bin hello_world` 在 Wayland 下验证。
+
+显式设置 `window_decorations: Some(WindowDecorations::Client)`（如
+`TitleBar::window_options()`）或 `app_owns_titlebar_drag: true` 表示应用自行绘制
+标题栏，框架不会补画，否则会出现两条标题栏。`titlebar: None`、弹出层、layer-shell、
+覆盖层与全屏窗口也不参与补画。
 
 ## TitleBar
 
@@ -46,7 +59,7 @@ cx.open_window(
 | `new` | `fn new() -> Self` | `:36` |
 | `title_bar_options` | `fn title_bar_options() -> TitlebarOptions` | `:45` |
 | `window_options` | `fn window_options() -> WindowOptions` | `:66` |
-| `on_close_window` | `fn on_close_window(handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self` | `:88` |
+| `on_close_window` | `fn on_close_window(handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self` | `:88`（**仅 Linux 生效**，其它平台无作用） |
 
 `TitleBar::new()` 支持 `ParentElement::child`（`:292`）挂子元素（标题、按钮等）。
 `ControlIcon`（`:113`）与 `WindowControls`（`:257`）为内部窗口控制按钮。
