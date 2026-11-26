@@ -850,10 +850,11 @@ impl Inner {
             return Ok(());
         }
         if result.timed_out() {
-            log::warn!(
-                "Could not hand the clipboard contents over to the clipboard manager. The request timed out."
-            );
-            return Ok(());
+            // 此前只 warn + Ok(())，退出路径的调用方以为交接成功；改为 Err
+            // 让上层按真实结果记录 error（可能有剪贴板管理器缺失/无响应）
+            return Err(Error::unknown(
+                "Could not hand the clipboard contents over to the clipboard manager: request timed out",
+            ));
         }
 
         Err(Error::unknown(

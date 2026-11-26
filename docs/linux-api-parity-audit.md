@@ -82,7 +82,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 13 | X11 `request_frame` 缺失，纯定时动画卡住；Wayland 靠 `commit` 能推进 | `crates/rgpui/src/platform.rs:1404-1410`；`x11/window.rs` 的 `PlatformWindow` 实现 | 同一段动画代码在两个后端表现不同 | 待验证 |
 | 14 | `focused_window` 只要编了 x11 feature 就无条件连 X11，即使在 Wayland 会话 | `focused_window.rs:17-22` | Wayland + XWayland 下返回 XWayland 客户端信息，不是当前原生窗口 | **已修** |
 | 15 | X11 缩放因子不读 XSettings，RandR 失败直接硬编码 1.0 | `x11/client.rs:2772`、`2766` | XFCE / GNOME X11 下 UI 尺寸偏小或偏大 | 待验证 |
-| 16 | 剪贴板交接给 manager 超时只 warn + `Ok(())` | `x11/clipboard.rs:852-857` | 复制后退出应用，粘贴板变空，调用方无错误 | 待验证 |
+| 16 | 剪贴板交接给 manager 超时只 warn + `Ok(())` | `x11/clipboard.rs:852-857` | 复制后退出应用，粘贴板变空，调用方无错误 | **已修** |
 | 17 | `rgpui-platform` 的 wayland/x11 feature 在 Linux 上是空操作（依赖硬编码双后端） | `crates/rgpui-platform/Cargo.toml:25-26`、`43-44` | 用户以为关掉了某后端，实际仍编进来；或以为选了 wayland 仍走 X11 | 待验证 |
 | 18 | 一批 `Platform` 方法持续空实现且无能力查询 | `platform.rs:829-833`、`952`、`802-806`、`824-827`、`544-551` | 最近文档 / dock 跳转列表 / 热状态等 UI 静默无效果 | 待验证 |
 | 19 | X11 `window_controls()` 未覆盖，走默认「四项全支持」 | `crates/rgpui/src/platform.rs:940-949`（`WindowControls::default()` 全 `true`）；X11 `window.rs` 无该方法；Wayland `window.rs:2130` 有真实能力上报 | `TitleBar` 据该值绘制按钮；平铺 WM / 不支持 min/max 的 WM 上会画出点了没反应的按钮（与本轮 #1 同类） | 已核实 |
@@ -119,7 +119,7 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 42 | portal Settings 连接失败后整个 future 静默结束，外观/光标主题/减少动效全留默认值 | `xdg_desktop_portal.rs:44-47`、`177-186` | **已修** |
 | 43 | reduce-motion 变更只更新 `common`，已有窗口不重读，需重启应用 | `xdg_desktop_portal.rs:258-259`；`wayland/client.rs:708-713`、`x11/client.rs:548-550` | 待验证 |
 | 44 | Wayland 光标主题加载失败直接 `return`，指针完全消失（无默认兜底） | `wayland/cursor.rs:118-121` | 待验证 |
-| 45 | 托盘 watcher 初始注册失败只 `debug!`，后续只靠命令流重试，shell 重启后可能永不注册 | `tray_sni.rs:396-416` | 待验证 |
+| 45 | 托盘 watcher 初始注册失败只 `debug!`，后续只靠命令流重试，shell 重启后可能永不注册 | `tray_sni.rs:396-416` | **已修** |
 | 46 | 电源事件监听失败后只 warn 且 `power_listener_started` 仍置 true，永不重试 | `platform.rs:266-283` | 待验证 |
 | 47 | `open_uri` / `reveal_path` 全失败只 `log::error!`，函数返回 `()` | `platform.rs:1027-1071`、`1080-1098` | 待验证 |
 | 48 | `set_exclusive_zone` 对非 layer-shell 窗口只 `debug!` 后返回 | `wayland/window.rs:2078-2097` | **已修** |
