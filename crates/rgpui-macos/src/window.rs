@@ -1142,7 +1142,9 @@ impl MacWindow {
                 return None;
             }
 
-            if msg_send![main_window, isKindOfClass: WINDOW_CLASS] {
+            // 用 is_gpui_window 而非只判断 WINDOW_CLASS：Popup/Overlay/Floating/
+            // Dialog 窗口是以 PANEL_CLASS 创建的，此前会被漏掉
+            if is_gpui_window(main_window) {
                 let handle = get_window_state(&*main_window).lock().handle;
                 Some(handle)
             } else {
@@ -1160,7 +1162,7 @@ impl MacWindow {
             let mut window_handles = Vec::new();
             for i in 0..count {
                 let window: id = msg_send![windows, objectAtIndex:i];
-                if msg_send![window, isKindOfClass: WINDOW_CLASS] {
+                if is_gpui_window(window) {
                     let handle = get_window_state(&*window).lock().handle;
                     window_handles.push(handle);
                 }
@@ -1667,6 +1669,32 @@ impl PlatformWindow for MacWindow {
             .detach();
     }
 
+    fn set_position(&mut self, position: Point<Pixels>) {
+        // 与建窗时（1124 行）用同一 API；必须切到主线程，NSWindow 非线程安全。
+        let this = self.0.lock();
+        let window = this.native_window;
+        let closed = this.closed.clone();
+        this.foreground_executor
+            .spawn(async move {
+                if_window_not_closed(closed, || unsafe {
+                    NSWindow::setFrameTopLeftPoint_(
+                        window,
+                        Objc2NSPoint::new(position.x.as_f32() as f64, position.y.as_f32() as f64),
+                    );
+                })
+            })
+            .detach();
+    }
+
+    /// 窗口级隐藏（从屏幕与窗口列表移除，托盘驻留场景用）。
+    /// 与 App::hide()（隐藏整个应用）语义不同。
+    fn hide(&self) {
+        let window = self.0.lock().native_window;
+        unsafe {
+            let _: () = msg_send![window, orderOut: nil];
+        }
+    }
+
     fn minimize(&self) {
         let window = self.0.lock().native_window;
         unsafe {
@@ -1759,7 +1787,7 @@ impl PlatformWindow for MacWindow {
             let mut result = Vec::new();
             for i in 0..count {
                 let window: id = msg_send![windows, objectAtIndex:i];
-                if msg_send![window, isKindOfClass: WINDOW_CLASS] {
+                if is_gpui_window(window) {
                     let handle = get_window_state(&*window).lock().handle;
                     let title: id = msg_send![window, title];
                     let title = SharedString::from(title.to_str().to_string());

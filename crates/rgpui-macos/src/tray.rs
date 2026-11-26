@@ -240,6 +240,28 @@ impl MacTray {
         Some((self.status_item?, self.menu?))
     }
 
+    /// 托盘图标按钮在屏幕上的边界（用于在其下方定位窗口）。
+    /// NSStatusItem 的 button.frame 给出按钮在状态栏坐标系里的矩形，
+    /// 再经 convertRectToScreen 转成屏幕坐标。
+    pub(crate) fn icon_bounds(&self) -> Option<rgpui::Bounds<rgpui::Pixels>> {
+        let status_item = self.status_item?;
+        unsafe {
+            let button: id = msg_send![status_item, button];
+            if button.is_null() {
+                return None;
+            }
+            let frame: cocoa::foundation::NSRect = msg_send![button, frame];
+            let screen_frame: cocoa::foundation::NSRect =
+                msg_send![button, convertRectToScreen: frame];
+            let origin = screen_frame.origin;
+            let size = screen_frame.size;
+            Some(rgpui::Bounds::new(
+                rgpui::point(rgpui::px(origin.x as f32), rgpui::px(origin.y as f32)),
+                rgpui::size(rgpui::px(size.width as f32), rgpui::px(size.height as f32)),
+            ))
+        }
+    }
+
     /// 确保状态栏里有按钮，并把点击 action 接到 target 上。
     fn ensure_status_item(&mut self) {
         if self.status_item.is_some() {

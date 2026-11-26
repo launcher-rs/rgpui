@@ -1277,6 +1277,12 @@ impl Platform for MacPlatform {
         tray.set_tooltip(tooltip);
     }
 
+    /// 托盘图标在屏幕上的边界：从 NSStatusItem 的 button.frame 读取，
+    /// 供应用在其下方定位窗口（此前 macOS 恒返回 None）。
+    fn get_tray_icon_bounds(&self) -> Option<rgpui::Bounds<rgpui::Pixels>> {
+        self.0.lock().tray.as_ref()?.icon_bounds()
+    }
+
     fn on_tray_icon_event(&self, callback: Box<dyn FnMut(TrayIconEvent)>) {
         self.0.lock().tray_icon_event_callback = Some(callback);
     }
