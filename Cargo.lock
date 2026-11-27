@@ -6850,7 +6850,6 @@ dependencies = [
  "anyhow",
  "env_logger",
  "futures",
- "hdrhistogram",
  "log",
  "lsp-types",
  "lyon",
@@ -6860,8 +6859,6 @@ dependencies = [
  "rgpui-platform",
  "serde",
  "serde_json",
- "tempfile",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -7830,7 +7827,6 @@ dependencies = [
  "rgpui-markdown",
  "rgpui-platform",
  "serde_json",
- "unicode-segmentation",
 ]
 
 [[package]]

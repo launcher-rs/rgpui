@@ -16,7 +16,6 @@ anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
 serde_json.workspace = true
-unicode-segmentation.workspace = true
 lyon.workspace = true
 futures.workspace = true
 rand.workspace = true
