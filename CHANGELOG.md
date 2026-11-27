@@ -2,6 +2,36 @@
 
 本项目遵循 [语义化版本控制](https://semver.org/lang/zh-CN/)。
 
+## [1.8.5] - 2026-11-27
+
+本版为维护版，所有发布 crate 统一到 1.8.5。核心公开 API 未新增或删除，主线是
+Linux / macOS 平台 API 契约对等性修复与示例整理。
+
+### 修复
+
+- **Linux / macOS 平台能力与实际行为对齐**（#97）：按第二轮审计清单逐项收口，
+  不再有「注册成功但回调永不触发」「能力声明为真却只返回错误」这类静默失效。
+  - Linux：后端不可用时逐级回退（Wayland → X11/XWayland → 无头）并消除启动期
+    panic；Wayland 初始化失败改为可回退错误；窗口能力标志在 X11 写入
+    `_MOTIF_WM_HINTS`、在 Wayland 与合成器能力取交集，`is_resizable: false`
+    通过 `WM_SIZE_HINTS` min=max 真正禁止缩放；装饰回退由 info 提为 warn，
+    客户端装饰时补画默认标题栏；URL scheme 回调在启动时从 argv 提取并派发；
+    托盘 `visible`、无头帧回调、剪贴板交接失败、SNI 注册兜底与滚动条自动隐藏
+    跟随 GNOME `overlay-scrolling` 等落地；屏幕捕获能力声明改为如实返回
+    （X11 为真、Wayland 与无头为假）。
+  - macOS：默认启用 font-kit，避免文字系统静默退化为 Noop；托盘聚合入口
+    `set_tray`、`request_attention`、按钮布局、窗口定位/隐藏、托盘边界、
+    鼠标穿透与输入监控权限等能力落地；修正重开回调 ABI、最大化状态保存、
+    嵌套关闭询问误放行、自动启动 plist 转义与通知类缺失 panic。
+  - 文档：平台契约、审计清单、技能索引与入门教程批量更新，逐项标注各 API
+    在各平台的落地程度与替代做法。
+
+### 其他
+
+- **示例整理**（#98）：5 个小示例 crate 合并进 showcase，showcase 收敛为
+  8 个 gallery bin；示例改为单文件 + 内联 demo 模块，`rgpui_story` 汇总
+  showcase 示例并按组件分类重排；移除未使用依赖，修复 cargo-machete 检查。
+
 ## [1.8.4] - 2026-11-25
 
 本版为维护版，所有发布 crate 统一到 1.8.4。
