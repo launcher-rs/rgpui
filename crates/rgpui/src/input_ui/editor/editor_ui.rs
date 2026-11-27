@@ -271,6 +271,7 @@ pub(crate) fn paint_inlay_hints(
                     first_line.to_string().into(),
                     font_size,
                     &[TextRun {
+                        font_size: None,
                         len: first_line.len(),
                         font: style.font(),
                         color,

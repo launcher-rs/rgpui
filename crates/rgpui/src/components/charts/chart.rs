@@ -1111,6 +1111,7 @@ impl RenderOnce for Chart {
                                         let text_len = tooltip_text.len();
 
                                         let text_run = TextRun {
+                                            font_size: None,
                                             len: text_len,
                                             font,
                                             color: text_color,

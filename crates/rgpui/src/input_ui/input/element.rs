@@ -970,6 +970,7 @@ impl TextElement {
                 "+".repeat(line_number_len).into(),
                 measure_size,
                 &[TextRun {
+                    font_size: None,
                     len: line_number_len,
                     font: measure_font,
                     color: crate::black(),
@@ -1033,6 +1034,7 @@ impl TextElement {
             space_text.clone(),
             space_font_size,
             &[TextRun {
+                font_size: None,
                 len: space_text.len(),
                 font: style.font(),
                 color: invisible_color,
@@ -1048,6 +1050,7 @@ impl TextElement {
             tab_text.clone(),
             tab_font_size,
             &[TextRun {
+                font_size: None,
                 len: tab_text.len(),
                 font: style.font(),
                 color: invisible_color,
@@ -1322,6 +1325,7 @@ impl Element for TextElement {
                         && state.core.selected_range.start == state.core.selected_range.end;
                     if at_end {
                         let run = TextRun {
+                            font_size: None,
                             len: display.len(),
                             font: text_style.font(),
                             color: crate::black(),
@@ -1603,6 +1607,7 @@ impl Element for TextElement {
         };
 
         let run = TextRun {
+            font_size: None,
             len: display_text.len(),
             font: style.font(),
             color: text_color,
@@ -1611,6 +1616,7 @@ impl Element for TextElement {
             strikethrough: None,
         };
         let marked_run = TextRun {
+            font_size: None,
             len: 0,
             font: style.font(),
             color: text_color,
@@ -1664,6 +1670,9 @@ impl Element for TextElement {
             }
             for (range, style) in &highlight_styles {
                 let mut run = text_style.clone().highlight(*style).to_run(range.len());
+                // 装饰里带字号时逐片段生效（Word 那种一行内几个字放大），
+                // 没有字号的片段继续用行基准字号。
+                run.font_size = style.font_size;
                 if disabled {
                     run.color = run.color.opacity(0.5);
                 }
@@ -1725,6 +1734,7 @@ impl Element for TextElement {
                     longest_line.clone(),
                     text_size,
                     &[TextRun {
+                        font_size: None,
                         len: longest_line.len(),
                         font: style.font(),
                         color: crate::black(),
@@ -1800,6 +1810,7 @@ impl Element for TextElement {
             let line_number_size = gutter.font_size.unwrap_or(text_size);
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
             let other_line_runs = vec![TextRun {
+                font_size: None,
                 len: line_number_len,
                 font: line_number_font(),
                 color: line_number_color,
@@ -1808,6 +1819,7 @@ impl Element for TextElement {
                 strikethrough: None,
             }];
             let current_line_runs = vec![TextRun {
+                font_size: None,
                 len: line_number_len,
                 font: line_number_font(),
                 color: active_line_number_color,
@@ -2458,6 +2470,7 @@ mod tests {
     #[test]
     fn test_runs_for_range() {
         let run = TextRun {
+            font_size: None,
             len: 0,
             font: font(".SystemUIFont"),
             color: black(),
@@ -2604,6 +2617,7 @@ mod tests {
     #[test]
     fn test_placeholder_line_runs() {
         let run = TextRun {
+            font_size: None,
             len: 0,
             font: font(".SystemUIFont"),
             color: black(),
@@ -2642,6 +2656,7 @@ mod tests {
     #[test]
     fn test_split_runs_by_bg_segments() {
         let run = TextRun {
+            font_size: None,
             len: 0,
             font: font(".SystemUIFont"),
             color: blue(),

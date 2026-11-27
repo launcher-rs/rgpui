@@ -587,6 +587,7 @@ impl DirectWriteState {
                 }
                 let len = remaining_bytes.min(run.len - run_offset);
                 segment_runs.push(FontRun {
+                    font_size: run.font_size,
                     len,
                     font_id: run.font_id,
                 });
@@ -607,6 +608,7 @@ impl DirectWriteState {
                 }
                 if let Some(last) = layout.runs.last_mut()
                     && last.font_id == run.font_id
+                    && last.font_size == run.font_size
                 {
                     last.glyphs.append(&mut run.glyphs);
                 } else {
@@ -641,11 +643,12 @@ impl DirectWriteState {
 
             let mut utf8_offset = 0usize;
             let mut utf16_offset = 0u32;
+            let mut size_ranges: SmallVec<[(u32, Pixels); 4]> = SmallVec::new();
             let text_layout = {
                 let first_run = &font_runs[0];
                 // 字号按 f32 位模式入键：`Pixels` 内部就是 f32，位模式比较与浮点相等
                 // 语义一致，且避免 `Pixels` 未实现 `Eq` 的问题。
-                let cache_key = (first_run.font_id, font_size.as_f32().to_bits());
+                let cache_key = (first_run.font_id, first_run.font_size.as_f32().to_bits());
                 let format = match self.text_format_cache.get(&cache_key).cloned() {
                     Some(format) => format,
                     None => {
@@ -658,7 +661,7 @@ impl DirectWriteState {
                                 font_info.font_face.GetWeight(),
                                 font_info.font_face.GetStyle(),
                                 DWRITE_FONT_STRETCH_NORMAL,
-                                font_size.as_f32(),
+                                first_run.font_size.as_f32(),
                                 &components.locale,
                             )?
                             .cast()?;
@@ -686,6 +689,7 @@ impl DirectWriteState {
                     length: current_text_utf16_length,
                 };
                 layout.SetTypography(&font_info.features, text_range)?;
+                size_ranges.push((0, first_run.font_size));
                 utf16_offset += current_text_utf16_length;
 
                 layout
@@ -713,15 +717,16 @@ impl DirectWriteState {
                     startPosition: utf16_offset,
                     length: current_text_utf16_length,
                 };
+                size_ranges.push((text_range.startPosition, run.font_size));
                 utf16_offset += current_text_utf16_length;
                 text_layout.SetFontCollection(collection, text_range)?;
                 text_layout.SetFontFamilyName(&font_info.font_family_h, text_range)?;
-                let font_size = if break_ligatures {
-                    font_size.as_f32().next_up()
+                let run_size = if break_ligatures {
+                    run.font_size.as_f32().next_up()
                 } else {
-                    font_size.as_f32()
+                    run.font_size.as_f32()
                 };
-                text_layout.SetFontSize(font_size, text_range)?;
+                text_layout.SetFontSize(run_size, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
                 text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
                 text_layout.SetTypography(&font_info.features, text_range)?;
@@ -735,6 +740,7 @@ impl DirectWriteState {
                 components,
                 index_converter: StringIndexConverter::new(text),
                 runs: &mut runs,
+                size_ranges: &size_ranges,
                 width: 0.0,
             };
             text_layout.Draw(
@@ -1520,6 +1526,8 @@ struct RendererContext<'t, 'a, 'b> {
     components: &'a DirectWriteComponents,
     index_converter: StringIndexConverter<'a>,
     runs: &'b mut Vec<ShapedRun>,
+    /// 本行每段的 (UTF-16 起始位置, 字号)：DrawGlyphRun 里据此还原该字形段的字号。
+    size_ranges: &'b [(u32, Pixels)],
     width: f32,
 }
 
@@ -1712,7 +1720,18 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             }
             glyph_idx += cluster_glyph_count;
         }
-        context.runs.push(ShapedRun { font_id, glyphs });
+        let run_size = context
+            .size_ranges
+            .iter()
+            .rev()
+            .find(|(start, _)| *start <= desc.textPosition)
+            .map(|(_, size)| *size)
+            .unwrap_or(px(16.0));
+        context.runs.push(ShapedRun {
+            font_size: run_size,
+            font_id,
+            glyphs,
+        });
         Ok(())
     }
 

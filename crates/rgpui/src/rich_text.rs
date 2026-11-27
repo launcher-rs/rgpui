@@ -2843,6 +2843,7 @@ fn build_cell_runs(para: &Paragraph, base: &crate::TextStyle) -> (String, Vec<Te
                 color: Some(color),
             });
         runs.push(TextRun {
+            font_size: None,
             len: run.text.len(),
             font,
             color,
@@ -2952,6 +2953,7 @@ fn build_paragraph(
                     color: Some(color),
                 });
             runs.push(TextRun {
+                font_size: None,
                 len: piece.len(),
                 font,
                 color,

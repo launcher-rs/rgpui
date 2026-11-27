@@ -584,6 +584,8 @@ impl From<RibbonToggle> for RibbonItem {
 pub struct RibbonDropdownItem {
     command: SharedString,
     label: Option<SharedString>,
+    params: Option<serde_json::Value>,
+    checked: bool,
 }
 
 impl RibbonDropdownItem {
@@ -592,12 +594,30 @@ impl RibbonDropdownItem {
         Self {
             command: command.into(),
             label: None,
+            params: None,
+            checked: false,
         }
     }
 
     /// 覆盖显示标签。
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// 附加命令参数（JSON），派发时作为动作的构造参数。
+    ///
+    /// 用于「同一个命令 + 不同取值」的菜单：例如字体列表里每一项都派发
+    /// `rujian::SetFontFamily`，只是 `{"family": "宋体"}` 不同，
+    /// 这样几百个字体不必各注册一个命令 id。
+    pub fn params(mut self, params: serde_json::Value) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    /// 是否在菜单里显示勾选标记（当前生效项）。
+    pub fn checked(mut self, checked: bool) -> Self {
+        self.checked = checked;
         self
     }
 }
@@ -979,8 +999,8 @@ impl RenderOnce for Ribbon {
                 let body = h_flex()
                     .w_full()
                     .items_stretch()
-                    .px(px(4.0))
-                    .py(px(2.0))
+                    .px(px(3.0))
+                    .py(px(1.0))
                     .children(tab.groups.iter().enumerate().map(|(index, group)| {
                         let is_last = index + 1 == tab.groups.len();
                         render_group(group, is_last, show_control_keytips, &pending, cx)
@@ -1044,8 +1064,8 @@ fn render_tab(
         .flex()
         .items_center()
         .gap(px(4.0))
-        .px(px(8.0))
-        .py(px(3.0))
+        .px(px(7.0))
+        .py(px(2.0))
         .rounded_md()
         .text_size(px(12.0))
         .cursor_pointer()
@@ -1111,8 +1131,7 @@ fn render_group(
         .justify_between()
         .items_center()
         .px(px(3.0))
-        .pt(px(2.0))
-        .pb(px(1.0))
+        .pt(px(1.0))
         .child(
             h_flex()
                 .flex_1()
@@ -1122,7 +1141,6 @@ fn render_group(
         )
         .child(
             div()
-                .pt(px(1.0))
                 .text_size(px(9.0))
                 .text_color(theme.muted_foreground)
                 .child(group.label.clone()),
@@ -1136,7 +1154,40 @@ fn render_group(
         .child(content)
 }
 
-/// 将分组项目排列为横向序列，连续的普通小按钮聚成每列最多 3 个的竖列。
+/// 每列最多叠放的小件数量。
+const COLUMN_ROWS: usize = 3;
+
+/// 把当前累积的小件竖列收进横向序列。
+fn flush_column(
+    elements: &mut Vec<crate::AnyElement>,
+    small_column: &mut Vec<crate::AnyElement>,
+) {
+    if !small_column.is_empty() {
+        let column = v_flex()
+            .items_start()
+            .gap(px(1.0))
+            .children(std::mem::take(small_column));
+        elements.push(column.into_any_element());
+    }
+}
+
+/// 追加一个小件，满 [`COLUMN_ROWS`] 个就换下一列。
+fn push_small(
+    elements: &mut Vec<crate::AnyElement>,
+    small_column: &mut Vec<crate::AnyElement>,
+    element: crate::AnyElement,
+) {
+    small_column.push(element);
+    if small_column.len() >= COLUMN_ROWS {
+        flush_column(elements, small_column);
+    }
+}
+
+/// 将分组项目排列为横向序列，小尺寸控件聚成每列最多 3 个的竖列。
+///
+/// 一列竖放 3 个「小件」（普通按钮、切换、下拉、组合框）而不是各占一列：
+/// 功能区的高度本来就被大按钮撑到 3 行，单行控件独占一列会留下大片空白，
+/// 也让整条功能区长得多。只有大按钮、库和分隔线才独占一列。
 fn render_group_items(
     items: &[RibbonItem],
     show_keytips: bool,
@@ -1146,37 +1197,34 @@ fn render_group_items(
     let mut elements: Vec<crate::AnyElement> = Vec::new();
     let mut small_column: Vec<crate::AnyElement> = Vec::new();
 
-    let mut flush_column = |elements: &mut Vec<crate::AnyElement>,
-                            small_column: &mut Vec<crate::AnyElement>| {
-        if !small_column.is_empty() {
-            let column = v_flex().gap(px(2.0)).children(std::mem::take(small_column));
-            elements.push(column.into_any_element());
-        }
-    };
-
     for item in items {
         match item {
-            RibbonItem::Button(button) if !button.large => {
-                small_column.push(render_small_button(button, show_keytips, pending, cx));
-                if small_column.len() >= 3 {
-                    flush_column(&mut elements, &mut small_column);
-                }
-            }
+            RibbonItem::Button(button) if !button.large => push_small(
+                &mut elements,
+                &mut small_column,
+                render_small_button(button, show_keytips, pending, cx),
+            ),
             RibbonItem::Button(button) => {
                 flush_column(&mut elements, &mut small_column);
                 elements.push(
                     render_large_button(button, show_keytips, pending, cx).into_any_element(),
                 );
             }
-            RibbonItem::Toggle(toggle) => {
-                flush_column(&mut elements, &mut small_column);
-                elements.push(render_toggle(toggle, show_keytips, pending, cx).into_any_element());
-            }
-            RibbonItem::Dropdown(dropdown) => {
-                flush_column(&mut elements, &mut small_column);
-                elements
-                    .push(render_dropdown(dropdown, show_keytips, pending, cx).into_any_element());
-            }
+            RibbonItem::Toggle(toggle) => push_small(
+                &mut elements,
+                &mut small_column,
+                render_toggle(toggle, show_keytips, pending, cx).into_any_element(),
+            ),
+            RibbonItem::Dropdown(dropdown) => push_small(
+                &mut elements,
+                &mut small_column,
+                render_dropdown(dropdown, show_keytips, pending, cx).into_any_element(),
+            ),
+            RibbonItem::Split(split) if !split.large => push_small(
+                &mut elements,
+                &mut small_column,
+                render_split(split, show_keytips, pending, cx).into_any_element(),
+            ),
             RibbonItem::Split(split) => {
                 flush_column(&mut elements, &mut small_column);
                 elements.push(render_split(split, show_keytips, pending, cx).into_any_element());
@@ -1186,17 +1234,18 @@ fn render_group_items(
                 elements
                     .push(render_gallery(gallery, show_keytips, pending, cx).into_any_element());
             }
-            RibbonItem::ComboBox(combo) => {
-                flush_column(&mut elements, &mut small_column);
-                elements.push(render_combo(combo, show_keytips, pending, cx).into_any_element());
-            }
+            RibbonItem::ComboBox(combo) => push_small(
+                &mut elements,
+                &mut small_column,
+                render_combo(combo, show_keytips, pending, cx).into_any_element(),
+            ),
             RibbonItem::Separator => {
                 flush_column(&mut elements, &mut small_column);
                 let theme = cx.theme();
                 elements.push(
                     div()
                         .w(px(1.0))
-                        .h(px(46.0))
+                        .h(px(44.0))
                         .mx(px(2.0))
                         .bg(theme.border)
                         .into_any_element(),
@@ -1324,7 +1373,7 @@ fn render_small_button(
         .items_center()
         .gap(px(2.0))
         .px(px(3.0))
-        .py(px(2.0))
+        .py(px(1.0))
         .rounded_md()
         .text_size(px(11.0))
         .text_color(foreground)
@@ -1334,7 +1383,7 @@ fn render_small_button(
         .when(button.disabled, |this| this.cursor_default());
 
     if let Some(icon) = button.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(12.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(11.0)).text_color(foreground));
     }
 
     element
@@ -1364,12 +1413,12 @@ fn render_large_button(
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
     let mut element = v_flex()
         .id(button.command.clone())
-        .w(px(56.0))
+        .w(px(52.0))
         .items_center()
         .justify_start()
-        .gap(px(2.0))
-        .px(px(3.0))
-        .py(px(4.0))
+        .gap(px(1.0))
+        .px(px(2.0))
+        .py(px(2.0))
         .rounded_md()
         .text_color(foreground)
         .when(!button.disabled, |this| {
@@ -1378,11 +1427,11 @@ fn render_large_button(
         .when(button.disabled, |this| this.cursor_default());
 
     if let Some(icon) = button.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(18.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(16.0)).text_color(foreground));
     }
 
     element
-        .child(div().text_size(px(10.0)).text_center().child(label))
+        .child(div().text_size(px(9.0)).text_center().child(label))
         .when_some(badge, |this, badge| this.child(badge))
         .when(!button.disabled, |this| {
             this.on_click(dispatch(&button.command))
@@ -1405,14 +1454,15 @@ fn render_toggle(
     };
     let badge = item_keytip(&toggle.command, &toggle.label, &toggle.keytip)
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
-    let mut element = v_flex()
+    let mut element = h_flex()
         .id(toggle.command.clone())
-        .w(px(50.0))
         .items_center()
+        .justify_center()
         .gap(px(2.0))
         .px(px(3.0))
-        .py(px(4.0))
+        .py(px(1.0))
         .rounded_md()
+        .text_size(px(11.0))
         .text_color(foreground)
         .when(toggle.checked, |this| this.bg(theme.accent))
         .when(!toggle.disabled, |this| this.cursor_pointer())
@@ -1422,11 +1472,11 @@ fn render_toggle(
         });
 
     if let Some(icon) = toggle.icon.clone() {
-        element = element.child(Icon::new(icon).with_size(px(16.0)).text_color(foreground));
+        element = element.child(Icon::new(icon).with_size(px(11.0)).text_color(foreground));
     }
 
     element
-        .child(div().text_size(px(10.0)).text_center().child(label))
+        .child(label)
         .when_some(badge, |this, badge| this.child(badge))
         .when(!toggle.disabled, |this| {
             this.on_click(dispatch(&toggle.command))
@@ -1443,36 +1493,47 @@ fn render_dropdown(
     let label = dropdown.label.clone();
     let badge = dropdown_keytip(dropdown)
         .and_then(|keytip| keytip_badge(&keytip, pending, show_keytips, None));
-    let items: Vec<(SharedString, SharedString)> = dropdown
+    let items: Vec<(SharedString, SharedString, Option<serde_json::Value>, bool)> = dropdown
         .items
         .iter()
         .map(|item| {
             (
                 item.command.clone(),
                 command_label(&item.command, &item.label),
+                item.params.clone(),
+                item.checked,
             )
         })
         .collect();
+    // 字体之类的长列表超过一屏时给出滚动条，否则底部项点不到。
+    let scrollable = items.len() > 12;
 
     let mut trigger = crate::Button::new(SharedString::from(format!(
         "ribbon-dropdown-{}",
         dropdown.label
     )))
-    .label(label);
+    .label(label)
+    // 与下方的小件同高（22px 一档），否则下拉会把整列撑胖。
+    .xsmall()
+    // 小尺寸后边框很淡，补一个下三角，让人看得出这里是下拉而不是普通标签。
+    .dropdown_caret(true);
 
     if let Some(icon) = dropdown.icon.clone() {
         trigger = trigger.icon(icon);
     }
 
     let trigger = trigger.dropdown_menu(move |menu, _window, _cx| {
-        let mut menu = menu;
-        for (command, label) in &items {
+        let mut menu = menu.scrollable(scrollable);
+        for (command, label, params, checked) in &items {
             let command = command.clone();
-            menu = menu.item(crate::PopupMenuItem::new(label.clone()).on_click(
-                move |_event, _window, cx| {
-                    let _ = cx.dispatch_command(&command, None);
-                },
-            ));
+            let params = params.clone();
+            menu = menu.item(
+                crate::PopupMenuItem::new(label.clone())
+                    .checked(*checked)
+                    .on_click(move |_event, _window, cx| {
+                        let _ = cx.dispatch_command(&command, params.clone());
+                    }),
+            );
         }
         menu
     });
@@ -1506,16 +1567,19 @@ fn render_split(
         render_small_button(&main_button, show_keytips, pending, cx)
     };
 
-    let items: Vec<(SharedString, SharedString)> = split
+    let items: Vec<(SharedString, SharedString, Option<serde_json::Value>, bool)> = split
         .items
         .iter()
         .map(|item| {
             (
                 item.command.clone(),
                 command_label(&item.command, &item.label),
+                item.params.clone(),
+                item.checked,
             )
         })
         .collect();
+    let scrollable = items.len() > 12;
 
     let caret = crate::Button::new(SharedString::from(format!(
         "ribbon-split-{}-caret",
@@ -1524,14 +1588,17 @@ fn render_split(
     .compact()
     .icon(IconName::ChevronDown)
     .dropdown_menu(move |menu, _window, _cx| {
-        let mut menu = menu;
-        for (command, label) in &items {
+        let mut menu = menu.scrollable(scrollable);
+        for (command, label, params, checked) in &items {
             let command = command.clone();
-            menu = menu.item(crate::PopupMenuItem::new(label.clone()).on_click(
-                move |_event, _window, cx| {
-                    let _ = cx.dispatch_command(&command, None);
-                },
-            ));
+            let params = params.clone();
+            menu = menu.item(
+                crate::PopupMenuItem::new(label.clone())
+                    .checked(*checked)
+                    .on_click(move |_event, _window, cx| {
+                        let _ = cx.dispatch_command(&command, params.clone());
+                    }),
+            );
         }
         menu
     });

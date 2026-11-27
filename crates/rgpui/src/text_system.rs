@@ -231,6 +231,7 @@ impl TextSystem {
                 buffer,
                 font_size,
                 &[FontRun {
+                    font_size: font_size,
                     len: buffer.len(),
                     font_id,
                 }],
@@ -570,11 +571,13 @@ impl WindowTextSystem {
                 let font_id = self.resolve_font(&run.font);
                 if let Some(font_run) = font_runs.last_mut()
                     && font_id == font_run.font_id
+                    && run.font_size.unwrap_or(font_size) == font_run.font_size
                     && !decoration_changed
                 {
                     font_run.len += run_len_within_line;
                 } else {
                     font_runs.push(FontRun {
+                        font_size: run.font_size.unwrap_or(font_size),
                         len: run_len_within_line,
                         font_id,
                     });
@@ -683,11 +686,13 @@ impl WindowTextSystem {
             let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
                 && font_id == font_run.font_id
+                && run.font_size.unwrap_or(font_size) == font_run.font_size
                 && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
                 font_runs.push(FontRun {
+                    font_size: run.font_size.unwrap_or(font_size),
                     len: run.len,
                     font_id,
                 });
@@ -715,6 +720,7 @@ impl WindowTextSystem {
                 buffer,
                 font_size,
                 &[FontRun {
+                    font_size: font_size,
                     len: buffer.len(),
                     font_id,
                 }],
@@ -764,11 +770,13 @@ impl WindowTextSystem {
             let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
                 && font_id == font_run.font_id
+                && run.font_size.unwrap_or(font_size) == font_run.font_size
                 && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
                 font_runs.push(FontRun {
+                    font_size: run.font_size.unwrap_or(font_size),
                     len: run.len,
                     font_id,
                 });
@@ -826,11 +834,13 @@ impl WindowTextSystem {
             let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
                 && font_id == font_run.font_id
+                && run.font_size.unwrap_or(font_size) == font_run.font_size
                 && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
                 font_runs.push(FontRun {
+                    font_size: run.font_size.unwrap_or(font_size),
                     len: run.len,
                     font_id,
                 });
@@ -1006,6 +1016,11 @@ pub struct TextRun {
     pub len: usize,
     /// 本段使用的字体。
     pub font: Font,
+    /// 本段使用的字号；`None` 表示沿用所在行的基准字号。
+    ///
+    /// 有值时该段可与其他段不同字号（Word 那样一行里几个字放大），
+    /// 排版时字形按本段字号塑形，基线由行内最大字号对齐。
+    pub font_size: Option<Pixels>,
     /// 文本颜色
     pub color: Hsla,
     /// 背景颜色（如果有）

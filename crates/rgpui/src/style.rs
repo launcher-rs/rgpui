@@ -601,8 +601,12 @@ impl TextStyle {
     }
 
     /// 将此文本样式转换为给定文本长度的 [`TextRun`]。
+    ///
+    /// 字号不在这里给出：同一个 `TextStyle` 可能被用在基准字号不同的行里，
+    /// 需要逐段字号的调用方（如输入框）直接给 `TextRun::font_size` 赋值。
     pub fn to_run(&self, len: usize) -> TextRun {
         TextRun {
+            font_size: None,
             len,
             font: Font {
                 family: self.font_family.clone(),
@@ -632,6 +636,11 @@ pub struct HighlightStyle {
     /// 字体样式，例如 italic
     pub font_style: Option<FontStyle>,
 
+    /// 字号的像素值；`None` 表示沿用所在行基准字号。
+    ///
+    /// 用于输入框等需要逐片段字号的场景（Word 里一行内几个字放大）。
+    pub font_size: Option<Pixels>,
+
     /// 文本的背景颜色
     pub background_color: Option<Hsla>,
 
@@ -652,6 +661,11 @@ impl Hash for HighlightStyle {
         self.color.hash(state);
         self.font_weight.hash(state);
         self.font_style.hash(state);
+        state.write_u32(u32::from_be_bytes(
+            self.font_size
+                .map(|f| f.0.to_be_bytes())
+                .unwrap_or_default(),
+        ));
         self.background_color.hash(state);
         self.underline.hash(state);
         self.strikethrough.hash(state);
@@ -1001,6 +1015,10 @@ impl From<&TextStyle> for HighlightStyle {
             color: Some(other.color),
             font_weight: Some(other.font_weight),
             font_style: Some(other.font_style),
+            font_size: match other.font_size {
+                AbsoluteLength::Pixels(size) => Some(size),
+                AbsoluteLength::Rems(_) => None,
+            },
             background_color: other.background_color,
             underline: other.underline,
             strikethrough: other.strikethrough,
@@ -1034,6 +1052,7 @@ impl HighlightStyle {
                 .or(self.color),
             font_weight: other.font_weight.or(self.font_weight),
             font_style: other.font_style.or(self.font_style),
+            font_size: other.font_size.or(self.font_size),
             background_color: other.background_color.or(self.background_color),
             underline: other.underline.or(self.underline),
             strikethrough: other.strikethrough.or(self.strikethrough),

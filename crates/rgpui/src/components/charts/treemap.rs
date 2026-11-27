@@ -487,6 +487,7 @@ impl RenderOnce for TreeMap {
                                     label_text,
                                     font_px,
                                     &[TextRun {
+                                        font_size: None,
                                         len: label_len,
                                         font,
                                         color: contrast,

@@ -82,6 +82,7 @@ impl TextElement {
             crate::SharedString::from(" ".repeat(column)),
             font_size,
             &[TextRun {
+                font_size: None,
                 len: column,
                 font: style.font(),
                 color: Hsla::default(),
@@ -184,6 +185,7 @@ impl TextElement {
             digits,
             font_size,
             &[TextRun {
+                font_size: None,
                 len: 10,
                 font: text_style.font(),
                 color: Hsla::default(),

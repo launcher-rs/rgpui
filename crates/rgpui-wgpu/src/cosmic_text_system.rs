@@ -534,7 +534,7 @@ impl CosmicTextSystemState {
             if let Some(same_run) = layout
                 .runs
                 .last_mut()
-                .filter(|last| last.font_id == run.font_id)
+                .filter(|last| last.font_id == run.font_id && last.font_size == run.font_size)
             {
                 same_run.glyphs.append(&mut run.glyphs);
             } else {
@@ -701,6 +701,8 @@ impl CosmicTextSystemState {
                 last_run.glyphs.push(shaped_glyph);
             } else {
                 runs.push(ShapedRun {
+                    // cosmic-text 的 span 不支持逐段字号，这里沿用行基准字号。
+                    font_size,
                     font_id,
                     glyphs: vec![shaped_glyph],
                 });
@@ -750,6 +752,7 @@ fn clip_font_runs(font_runs: &[FontRun], range: Range<usize>) -> SmallVec<[FontR
         let end = offs.min(range.end);
         if start < end {
             clipped.push(FontRun {
+                font_size: run.font_size,
                 len: end - start,
                 font_id: run.font_id,
             });
@@ -1049,6 +1052,7 @@ mod tests {
     fn layout_text(text_system: &CosmicTextSystem, text: &str) -> Result<LineLayout> {
         let font_id = text_system.font_id(&rgpui::font("IBM Plex Sans"))?;
         let runs = [FontRun {
+            font_size: px(16.0),
             len: text.len(),
             font_id,
         }];
@@ -1158,10 +1162,12 @@ mod tests {
         // The run boundary falls inside the trailing RTL paragraph.
         let runs = [
             FontRun {
+                font_size: px(16.0),
                 len: "ab\u{001c}\u{05d0}".len(),
                 font_id,
             },
             FontRun {
+                font_size: px(16.0),
                 len: "\u{05d1}".len(),
                 font_id,
             },
@@ -1215,10 +1221,12 @@ mod tests {
     fn font_runs_are_clipped_to_segment() {
         let runs = [
             FontRun {
+                font_size: px(16.0),
                 len: 3,
                 font_id: fid(1),
             },
             FontRun {
+                font_size: px(16.0),
                 len: 4,
                 font_id: fid(2),
             },
@@ -1229,10 +1237,12 @@ mod tests {
             clip_font_runs(&runs, 2..5).as_slice(),
             &[
                 FontRun {
+                    font_size: px(16.0),
                     len: 1,
                     font_id: fid(1)
                 },
                 FontRun {
+                    font_size: px(16.0),
                     len: 2,
                     font_id: fid(2)
                 },
@@ -1241,6 +1251,7 @@ mod tests {
         assert_eq!(
             clip_font_runs(&runs, 3..7).as_slice(),
             &[FontRun {
+                font_size: px(16.0),
                 len: 4,
                 font_id: fid(2)
             }]

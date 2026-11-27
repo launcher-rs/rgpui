@@ -578,6 +578,7 @@ impl Element for InlineEditTextElement {
         };
 
         let run = TextRun {
+            font_size: None,
             len: display_text.len(),
             font: text_style.font(),
             color: text_color,
@@ -734,6 +735,7 @@ impl Element for InlineEditTextElement {
             .line_height
             .to_pixels(text_style.font_size, rem_size);
         let run = TextRun {
+            font_size: None,
             len: display.len(),
             font: text_style.font(),
             color,

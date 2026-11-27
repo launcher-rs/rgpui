@@ -34,6 +34,8 @@ pub struct LineLayout {
 pub struct ShapedRun {
     /// 此文本段的字体 ID
     pub font_id: FontId,
+    /// 此段的实际字号（可能与行基准字号不同）
+    pub font_size: Pixels,
     /// 构成此文本段的字形
     pub glyphs: Vec<ShapedGlyph>,
 }
@@ -841,6 +843,8 @@ pub struct FontRun {
     pub len: usize,
     /// 使用的字体 ID。
     pub font_id: FontId,
+    /// 这一段的实际字号；同一行里不同段可以不同字号。
+    pub font_size: Pixels,
 }
 
 trait AsCacheKeyRef {
@@ -1004,6 +1008,7 @@ mod tests {
             ascent: px(12.),
             descent: px(4.),
             runs: vec![ShapedRun {
+                font_size: px(16.0),
                 font_id: FontId(0),
                 glyphs,
             }],

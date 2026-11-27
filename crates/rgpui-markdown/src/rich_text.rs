@@ -501,6 +501,7 @@ impl InlineFlattener {
         };
 
         self.runs.push(TextRun {
+            font_size: None,
             len,
             font,
             color,
