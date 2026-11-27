@@ -877,7 +877,8 @@ impl InputState {
 
     /// 实际使用的光标宽度。
     pub(crate) fn cursor_width(&self) -> crate::Pixels {
-        self.cursor_width_override.unwrap_or(super::super::blink_cursor::CURSOR_WIDTH)
+        self.cursor_width_override
+            .unwrap_or(super::super::blink_cursor::CURSOR_WIDTH)
     }
 
     /// 设置折行宽度的右侧预留（默认 10px）。

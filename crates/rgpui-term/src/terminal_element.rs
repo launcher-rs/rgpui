@@ -96,7 +96,6 @@ impl DisplayCursor {
 /// 减少绘制调用次数。
 #[derive(Debug)]
 pub struct BatchedTextRun {
-    font_size: None,
     /// 起始位置
     pub start_point: AlacPoint<i32, i32>,
     /// 文本内容
@@ -110,7 +109,6 @@ pub struct BatchedTextRun {
 }
 
 impl BatchedTextRun {
-    font_size: None,
     fn new_from_char(
         start_point: AlacPoint<i32, i32>,
         c: char,
@@ -121,7 +119,6 @@ impl BatchedTextRun {
         let mut text = String::with_capacity(128);
         text.push(c);
         BatchedTextRun {
-            font_size: None,
             start_point,
             text,
             cell_count: 1,
@@ -755,6 +752,7 @@ impl TerminalElement {
         };
 
         TextRun {
+            font_size: None,
             len: indexed.c.len_utf8(),
             color: if hyperlink_uri.is_some() {
                 link_color

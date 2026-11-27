@@ -741,7 +741,9 @@ impl RenderOnce for Slider {
                         }
                     })
             })
-            .when(self.focusable, |this| this.focus_ring(is_focused, px(2.), window, cx))
+            .when(self.focusable, |this| {
+                this.focus_ring(is_focused, px(2.), window, cx)
+            })
             .flex()
             .flex_1()
             .items_center()

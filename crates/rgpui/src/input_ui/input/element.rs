@@ -1371,7 +1371,7 @@ impl Element for TextElement {
         container_style.font_family = Some(text_style.font_family.clone());
         container_style.font_weight = Some(text_style.font_weight);
         container_style.font_style = Some(text_style.font_style);
-        container_style.line_height = Some(effective_line_height(state, window));
+        container_style.line_height = Some(effective_line_height(&self.state.read(cx), window));
         container_style.white_space = Some(text_style.white_space);
 
         // 文本子节点（沿用 from_bounds 绝对定位，作为容器首个子节点）。
@@ -1382,7 +1382,7 @@ impl Element for TextElement {
         text_style2.font_family = Some(text_style.font_family.clone());
         text_style2.font_weight = Some(text_style.font_weight);
         text_style2.font_style = Some(text_style.font_style);
-        text_style2.line_height = Some(effective_line_height(state, window));
+        text_style2.line_height = Some(effective_line_height(&self.state.read(cx), window));
         text_style2.white_space = Some(text_style.white_space);
 
         let mut children = vec![DomNode {

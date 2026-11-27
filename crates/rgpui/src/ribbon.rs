@@ -1158,10 +1158,7 @@ fn render_group(
 const COLUMN_ROWS: usize = 3;
 
 /// 把当前累积的小件竖列收进横向序列。
-fn flush_column(
-    elements: &mut Vec<crate::AnyElement>,
-    small_column: &mut Vec<crate::AnyElement>,
-) {
+fn flush_column(elements: &mut Vec<crate::AnyElement>, small_column: &mut Vec<crate::AnyElement>) {
     if !small_column.is_empty() {
         let column = v_flex()
             .items_start()
