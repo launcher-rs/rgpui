@@ -412,6 +412,7 @@ impl Element for EditorText {
         let lines: Vec<ShapedLine> = if is_placeholder {
             let placeholder: SharedString = "Type here...".into();
             let run = TextRun {
+                font_size: None,
                 len: placeholder.len(),
                 font: style.font(),
                 color: hsla(0., 0., 0.5, 0.5),
@@ -430,6 +431,7 @@ impl Element for EditorText {
                 .map(|line_str| {
                     let text: SharedString = SharedString::from(line_str.to_string());
                     let run = TextRun {
+                        font_size: None,
                         len: text.len(),
                         font: style.font(),
                         color: text_color,
