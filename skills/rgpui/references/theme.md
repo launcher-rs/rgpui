@@ -94,8 +94,8 @@ Theme::global_mut(cx).radius = px(8.);
 cx.refresh_windows();  // 或 window.refresh()
 ```
 
-运行时改色示例见 `examples/showcase/src/bin/theme.rs`
-（`cargo run -p showcase --bin theme`）。
+运行时改色示例见 `examples/showcase/src/bin/core_gallery.rs`
+（`cargo run -p showcase --bin core_gallery -- theme`）。
 
 ## 主题注册表与热重载
 

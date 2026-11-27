@@ -42,7 +42,7 @@ cx.open_window(
 Linux/Wayland 上 GNOME/Mutter 不提供 `zxdg_decoration_manager_v1`，请求服务端装饰
 会回退为客户端装饰；框架检测到「期望系统装饰但实际是客户端装饰」时，会在根元素上方
 自动插入一个默认标题栏（`SystemTitleBar`，带标题文字与标准窗口控制按钮），避免出现
-无标题栏窗口。可用 `cargo run -p showcase --bin hello_world` 在 Wayland 下验证。
+无标题栏窗口。可用 `cargo run -p showcase --bin core_gallery -- hello_world` 在 Wayland 下验证。
 
 显式设置 `window_decorations: Some(WindowDecorations::Client)`（如
 `TitleBar::window_options()`）或 `app_owns_titlebar_drag: true` 表示应用自行绘制

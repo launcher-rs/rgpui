@@ -8,38 +8,38 @@
 
 [components."滚动"]
 modules = ["crates/rgpui/src/elements/scroll"]
-bins = ["showcase:scrollable", "list_showcase:uniform_list"]
+bins = ["showcase:core_gallery", "showcase:media_gallery"]
 
 [components."基础元素"]
 modules = ["crates/rgpui/src/elements"]
-bins = ["showcase:component_gallery", "showcase:extended_components"]
+bins = ["showcase:core_gallery", "showcase:core_gallery"]
 
 [components."表单"]
 modules = [
     "crates/rgpui/src/form",
     "crates/rgpui/src/components/questionnaire.rs",
 ]
-bins = ["showcase:form", "showcase:questionnaire"]
+bins = ["showcase:form_gallery", "showcase:form_gallery"]
 
 [components."差异查看器"]
 modules = ["crates/rgpui/src/components/diff.rs"]
-bins = ["showcase:diff"]
+bins = ["showcase:tools_gallery"]
 
 [components."输入"]
 modules = ["crates/rgpui/src/input_ui"]
-bins = ["showcase:input"]
+bins = ["showcase:form_gallery"]
 
 [components."编辑器"]
 modules = ["crates/rgpui/src/input_ui/editor"]
-bins = ["showcase:editor"]
+bins = ["showcase:tools_gallery"]
 
 [components."菜单"]
 modules = ["crates/rgpui/src/menu"]
-bins = ["showcase:component_gallery", "showcase:native_menu"]
+bins = ["showcase:core_gallery", "showcase:creative_gallery"]
 
 [components."对话框"]
 modules = ["crates/rgpui/src/dialog"]
-bins = ["showcase:dialog"]
+bins = ["showcase:form_gallery"]
 
 [components."列表/表格/标签页"]
 modules = [
@@ -48,80 +48,80 @@ modules = [
     "crates/rgpui/src/tabs",
 ]
 bins = [
-    "showcase:tabs",
-    "list_showcase:list_example",
-    "list_showcase:data_table",
-    "list_showcase:uniform_list",
+    "showcase:core_gallery",
+    "showcase:media_gallery",
+    "showcase:media_gallery",
+    "showcase:media_gallery",
 ]
 
 [components."电子表格网格"]
 modules = ["crates/rgpui/src/sheet_grid.rs"]
-bins = ["showcase:spreadsheet_gallery"]
+bins = ["showcase:suite_gallery"]
 
 [components."标题栏/扩展"]
 modules = ["crates/rgpui/src/title_bar", "crates/rgpui/src/components"]
 bins = [
-    "showcase:component_gallery",
-    "showcase:extended_components",
-    "showcase:sidebar",
-    "showcase:layout_gallery",
+    "showcase:core_gallery",
+    "showcase:core_gallery",
+    "showcase:core_gallery",
+    "showcase:creative_gallery",
 ]
 
 [components."动画/手势/物理"]
 modules = ["crates/rgpui/src/animation"]
-bins = ["showcase:animation"]
+bins = ["showcase:core_gallery"]
 
 [components."对话"]
 modules = ["crates/rgpui/src/chat"]
-bins = ["showcase:layout_gallery"]
+bins = ["showcase:creative_gallery"]
 
 [components."剪贴板"]
 modules = ["crates/rgpui/src/platform.rs"]
-bins = ["showcase:rich_clipboard"]
+bins = ["showcase:text_gallery"]
 
 [components."富文本"]
 modules = ["crates/rgpui/src/rich_text.rs"]
-bins = ["showcase:rich_text"]
+bins = ["showcase:text_gallery"]
 
 [components."Ink 笔迹"]
 modules = ["crates/rgpui/src/ink.rs"]
-bins = ["showcase:ink"]
+bins = ["showcase:creative_gallery"]
 
 [components."缩略图排序器"]
 modules = ["crates/rgpui/src/sorter.rs"]
-bins = ["showcase:sorter"]
+bins = ["showcase:creative_gallery"]
 
 [components."动画时间线"]
 modules = ["crates/rgpui/src/anim_timeline.rs"]
-bins = ["showcase:timeline"]
+bins = ["showcase:creative_gallery"]
 
 [components."色板"]
 modules = ["crates/rgpui/src/components/color_palette.rs"]
-bins = ["showcase:color_picker"]
+bins = ["showcase:creative_gallery"]
 
 [components."屏幕取色"]
 modules = ["crates/rgpui/src/eyedropper.rs"]
-bins = ["showcase:color_picker"]
+bins = ["showcase:creative_gallery"]
 
 [components."多文档界面 MDI"]
 modules = ["crates/rgpui/src/mdi.rs"]
-bins = ["showcase:mdi"]
+bins = ["showcase:creative_gallery"]
 
 [components."任务窗格"]
 modules = ["crates/rgpui/src/task_pane.rs"]
-bins = ["showcase:task_pane"]
+bins = ["showcase:creative_gallery"]
 
 [components."画布语义"]
 modules = ["crates/rgpui/src/canvas_a11y.rs"]
-bins = ["showcase:canvas_a11y"]
+bins = ["showcase:creative_gallery"]
 
 [components."双向文字 bidi"]
 modules = ["crates/rgpui/src/bidi.rs"]
-bins = ["showcase:intl_text"]
+bins = ["showcase:text_gallery"]
 
 [components."东亚断行禁则"]
 modules = ["crates/rgpui/src/line_break.rs"]
-bins = ["showcase:intl_text"]
+bins = ["showcase:text_gallery"]
 
 [components."应用套件基座"]
 modules = [
@@ -141,23 +141,23 @@ modules = [
     "crates/rgpui/src/mcp.rs",
 ]
 bins = [
-    "showcase:app_suite",
-    "showcase:ribbon_gallery",
-    "showcase:automation",
-    "showcase:ribbon_gallery",
-    "showcase:ribbon_gallery",
-    "showcase:ribbon_gallery",
-    "showcase:ribbon_gallery",
-    "showcase:viewport_gallery",
-    "showcase:viewport_gallery",
-    "showcase:viewport_gallery",
-    "showcase:spreadsheet_gallery",
-    "showcase:page_view",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:suite_gallery",
+    "showcase:creative_gallery",
 ]
 
 [components."国际化 i18n"]
 modules = ["crates/rgpui/src/i18n/mod.rs"]
-bins = ["showcase:i18n"]
+bins = ["showcase:text_gallery"]
 
 [components."终端"]
 modules = [
@@ -179,7 +179,7 @@ modules = [
     "crates/rgpui-markdown/src/toc.rs",
 ]
 bins = [
-    "showcase:markdown",
-    "showcase:markdown_stream",
-    "showcase:markdown_selection",
+    "showcase:text_gallery",
+    "showcase:text_gallery",
+    "showcase:text_gallery",
 ]

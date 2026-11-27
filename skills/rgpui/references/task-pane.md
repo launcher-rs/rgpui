@@ -117,7 +117,7 @@ cx.observe(&pane, |_this, _pane, cx| cx.notify()).detach();
 
 ## 示例与陷阱
 
-- 示例：`cargo run -p showcase --bin task_pane`（`examples/showcase/src/bin/task_pane.rs`，无 feature 门控）。
+- 示例：`cargo run -p showcase --bin creative_gallery -- task_pane`（`examples/showcase/src/bin/creative_gallery.rs`，无 feature 门控）。
 - `set_parent_bounds` **没有元素侧的自动喂值**（`set_rect` 有）：不调它，`parent.size.width <= px(0.0)`
   会让 `cross_side_at` 恒为 `false`，「拖过中线换边」静默失效。
 - 坐标口径混用：`hit_test`/`on_pointer_*`/`tab_at`/`set_parent_bounds` 收窗口坐标，

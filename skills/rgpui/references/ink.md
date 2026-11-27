@@ -107,7 +107,7 @@ layer.cancel_stroke();                                          // 放弃当前�
 
 ## 示例与最佳实践
 
-示例：`cargo run -p showcase --bin ink`（`examples/showcase/src/bin/ink.rs`，
+示例：`cargo run -p showcase --bin creative_gallery -- ink`（`examples/showcase/src/bin/creative_gallery.rs`，
 钢笔/荧光笔落笔含压感、`erase_local` 橡皮、套索选中 + 撤销/清空 + 多图层）。
 
 ```rust

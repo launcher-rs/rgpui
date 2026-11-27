@@ -29,8 +29,8 @@ editor.update(cx, |ed, cx| ed.set_language("rust", window, cx));
 Editor::new(&editor)
 ```
 
-示例：`cargo run -p showcase --bin editor`（需 `--features editor` 或
-`cargo run -p showcase --all-features --bin editor`）。
+示例：`cargo run -p showcase --bin tools_gallery`（需 `--features editor` 或
+`cargo run -p showcase --all-features --bin tools_gallery`）。
 
 ## EditorState
 

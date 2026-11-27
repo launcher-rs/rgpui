@@ -27,7 +27,7 @@ v_form()
     ))
 ```
 
-示例：`cargo run -p showcase --bin form`（`examples/showcase/src/bin/form.rs`）。
+示例：`cargo run -p showcase --bin form_gallery`（「表单」段）（`examples/showcase/src/bin/form_gallery.rs`）。
 
 ## Form
 
@@ -139,7 +139,7 @@ Form::horizontal()
 事件：`QuestionnaireEvent::StepChanged { from, to }`（步骤切换）与 `QuestionnaireEvent::Submit`
 （末步提交）。应用经 `cx.subscribe(&wizard, |_, _, event, cx| ...)` 接收。
 
-示例：`cargo run -p showcase --bin questionnaire`（`examples/showcase/src/bin/questionnaire.rs`）。
+示例：`cargo run -p showcase --bin form_gallery`（「问卷向导」段）（`examples/showcase/src/bin/form_gallery.rs`）。
 
 ```rust
 use rgpui::{Questionnaire, QuestionnaireState, QuestionStep};

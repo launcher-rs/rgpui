@@ -98,7 +98,7 @@ let view = cx.new(|cx| WebView::new(webview, window, cx));
 - `EyedropperResult`（`:55`）：`Picked(Hsla)` / `Cancelled` / `Failed(SharedString)`。
 - `ColorPickerState::begin_eyedropper(cx)`（`color_picker.rs:171`）是唯一的框架内调用点：
   启用 feature 后取色器面板自动多出一行「屏幕取色」按钮（`:384` 的 `cfg` 分支）。
-- 运行：`cargo run -p showcase --bin color_picker --features screen-capture`。
+- 运行：`cargo run -p showcase --features screen-capture --bin creative_gallery -- color_picker`。
 
 > 旧的「`scap` / `screen-capture` 与 `windows-capture` API 不兼容、编译失败」结论**已过期**
 > （AGENTS.md 已更正）：Windows 本地可编译，跨平台由 CI 矩阵兜底。

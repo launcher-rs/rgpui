@@ -10,7 +10,7 @@
 （`Timeline`/`Track`/`Keyframe`/`Interpolation`）负责存储与求值，控件
 （`TimelineState`/`TimelineView`）负责命中、拖拽（水平改时间、垂直改值）与播放。
 
-示例：`cargo run -p showcase --bin timeline`（`examples/showcase/src/bin/timeline.rs`）。
+示例：`cargo run -p showcase --bin creative_gallery -- timeline`（`examples/showcase/src/bin/creative_gallery.rs`）。
 
 ## 数据模型
 

@@ -10,8 +10,8 @@
 且 **基础组件不在 prelude**（`prelude.rs` 不 glob elements），必须显式
 `use rgpui::{Button, Checkbox, ...};`。
 
-示例：`cargo run -p showcase --bin component_gallery`
-（`examples/showcase/src/bin/component_gallery.rs`）。
+示例：`cargo run -p showcase --bin core_gallery -- component_gallery`
+（`examples/showcase/src/bin/core_gallery.rs`）。
 
 ## 导入约定
 
@@ -228,7 +228,7 @@ cx.subscribe(&slider, |this, _, ev: &SliderEvent, cx| {
 `IconName::Undo`、`IconName::Undo2`、`IconName::User`、`IconName::WindowClose`、
 `IconName::WindowMaximize`、`IconName::WindowMinimize`、`IconName::WindowRestore`。
 
-示例：`cargo run -p showcase --bin icons`；`crates/rgpui/tests/guards.rs` 会校验本清单、
+示例：`cargo run -p showcase --bin core_gallery -- icons`；`crates/rgpui/tests/guards.rs` 会校验本清单、
 `icons.rs` 与 `assets/icons` 三者一致，改图标务必同步这三处。
 
 **Img**：自由函数 `img(source: impl Into<ImageSource>) -> Img`（`img.rs:198`）。

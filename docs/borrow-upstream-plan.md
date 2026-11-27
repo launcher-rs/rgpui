@@ -35,7 +35,8 @@
 **已完成（2026-11-21）**：动画改用 executor 时钟（zed `99e70ee4a0`，`956454d8`）、
 borrow / window 错误诊断（zed `c408f8efc4`，`50e1936f`——含上游前置的 borrow_origin
 追踪机制，window.rs 21 处 log_err 站点加操作与窗口 id 上下文）、D4c 像素对拍
-（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）、`fast/` 依赖快照哈希去重（gpui-fast `0f5bf7f` 思想，`5ad60a83`——上游修的是
+（gpui-fast `3268abe`，`df1790af`——通过后软件适配器默认开启 partial 重绘）、
+`fast/` 依赖快照哈希去重（gpui-fast `0f5bf7f` 思想，`5ad60a83`——上游修的是
 `unique_states`/`OffsetReads::of` 的二次方回溯；rgpui 的对应问题在 `absorb_*`/
 `merge` 完全不去重、保留视图依赖集无界膨胀，改为吸收点哈希去重：完全相同的
 重复只保留首次，不同版本 / 读取方式并存，is_stale 语义逐位不变）、
@@ -602,7 +603,6 @@ alpha，不重绘视图，避免每帧重绘整个视图树。
   引起出帧时推进动画，CI 矩阵也无法本地验证；登记为后续。
 - **reduce motion**：`Svg::paint` 检查 `cx.reduce_motion()`，开启时按起始变换
   静态绘制（不登记动画）。
-- **真实调用点**：`examples/showcase/src/bin/animation.rs` 加了一个
   `with_timed_transformation` 旋转的 SVG，与原有 `with_animation` 版本并列对照。
 - **验证**：`elements::svg::tests` 4 条（旋转插值/回绕、缩放+alpha+alternate、
   max_fps、period=0）、`scene::animation_tests` 4 条（advance 只改矩阵与 alpha、

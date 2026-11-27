@@ -86,7 +86,6 @@
 
 ### 2.1 [P0] Linux 窗口后端根本没有被编译进来
 
-**症状**：`cargo run -p showcase --bin hello_world` 退出码 0，无窗口、无输出、无任何报错。
 `tray_simple` 打印一行 `Tray should be visible now.` 后一直挂着。
 
 **根因链**（每一环都已核实）：
@@ -1111,11 +1110,9 @@ Wayland 口径（wlr layer-shell 明确写了 exclusive zone 包含表面几何�
 - **Wayland**：`layer_surface.set_exclusive_zone` / `set_exclusive_edge` 两个运行时请求，
   提交前判空 —— 非 layer-shell 窗口没有这个协议对象，跳过并记 debug；非法边缘交给合成器忽略。
 - **核心层**：`set_exclusive_edge` 的 cfg 从 `wayland` 放宽到 `any(wayland, x11)`（X11 也
-  需要它），`platform/layer_shell.rs` 与 `WindowKind::LayerShell` 从 `wayland` 放开到整个
   `target_os = "linux"` —— 里面的类型全是纯数据，X11 现在也读它们。顺带补上
   `rgpui-linux` 的 `x11` feature 对 `rgpui/x11` 的转发：**没转发时核心层的
   `guess_compositor()` 读不到 `DISPLAY`**，X11-only 的构建会自己挑到 Headless 后端。
-- **调用点**：`examples/layer_shell`（顶部面板，锚 LEFT|RIGHT|TOP、离边 20、高 200，
   运行时 `set_exclusive_edge(TOP)` + `set_exclusive_zone(px(220.))`）。它原先是
   Wayland-only（`panic!` 退出），现在两个后端都跑同一段代码。
 
@@ -1501,7 +1498,6 @@ DISPLAY=:10.0 /tmp/xshape-target/debug/xshape 0x3000001 0x2a00001
 /tmp/xshape-target/debug/xshape mode=empty   0x3000001     # → INPUT[]
 
 # 验证独占区域（§4.4）：回读 strut 属性，再用 _NET_WORKAREA 的前后差证明 WM 真的让了位
-env -u WAYLAND_DISPLAY DISPLAY=:10.0 RUST_LOG=info /tmp/rgpui-target/debug/layer_shell &
 # 面板传的是 titlebar: None → 没有 WM_NAME，只能按 WM_CLASS 在 _NET_CLIENT_LIST 里找：
 for w in $(xprop -root _NET_CLIENT_LIST | sed 's/.*# //; s/,//g'); do
   xprop -notype -id $w WM_CLASS 2>/dev/null | grep -q layer-shell-example && echo "$w"
@@ -1607,7 +1603,6 @@ xdpyinfo | sed -n '/number of extensions/,/^$/p'
    剩余：Wayland 的 `map_window`。
    ~~`set_exclusive_zone` / `set_exclusive_edge`~~ —— 已实现（`7d4ec3fdec`）：X11 走 EWMH
    strut（`WindowKind::LayerShell` → DOCK 窗口），Wayland 补运行时请求，
-   `layer_shell` 示例是两通用同一套代码的调用点；口径与本机证据见 §4.4 末。
    ~~`set_titlebar_visible`~~ —— X11 已实现并本机验证（`a05578a672`）：Motif 装饰位清零，
    顺带补上核心层缺失的 `Window` 包装（Windows 那份实现此前无人可调）；
    Wayland 无对应协议，如实留空。§4.4 里 `get_raw_handle` 一行也已更正 ——

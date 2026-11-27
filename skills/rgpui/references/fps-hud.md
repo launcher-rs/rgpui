@@ -6,7 +6,7 @@
 
 `crates/rgpui/src/fps_hud.rs`（`pub mod fps_hud;` `rgpui.rs:281`），prelude 重导出
 `FpsHud`/`FpsHudState`（`prelude.rs:64`）。用于显示 FPS/CPU/内存/绘制耗时的调试浮层。
-示例：`cargo run -p showcase --bin fps_hud`。
+示例：`cargo run -p showcase --bin core_gallery -- fps_hud`。
 
 `DRAW` 行默认读取 [`Window::frame_stats`] 的 `avg_ms`（CPU 侧 draw 段：布局 +
 场景构建 + 文本绘制，不含 GPU 提交与桌面合成），也可经

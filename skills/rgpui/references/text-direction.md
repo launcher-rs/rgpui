@@ -13,7 +13,7 @@
 - `rgpui::line_break`（`crates/rgpui/src/line_break.rs`，`rgpui.rs:321`）——CJK
   逐字换行时的**禁则（kinsoku）**与胶连字符判定。
 
-示例：`cargo run -p showcase --bin intl_text`（`examples/showcase/src/bin/intl_text.rs`）。
+示例：`cargo run -p showcase --bin text_gallery -- intl_text`（`examples/showcase/src/bin/text_gallery.rs`）。
 
 ## TextDirection：段落基准方向
 
