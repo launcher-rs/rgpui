@@ -148,8 +148,8 @@ if let Some(receiver) = receiver {
   `None`**；Windows 实现在 `crates/rgpui-windows/src/window.rs:897`，macOS 在
   `crates/rgpui-macos/src/window.rs:1492`。原生菜单的模态循环会重入平台层，所以两处都
   在前台执行器任务里弹窗、结果经 `oneshot` 送回，不在 `App` 借用期间阻塞。
-- 真实用例：`cargo run -p showcase --bin native_menu`
-  （`examples/showcase/src/bin/native_menu.rs`），同屏对照原生弹出菜单与框架自绘
+- 真实用例：`cargo run -p showcase --bin creative_gallery -- native_menu`
+  （`examples/showcase/src/bin/creative_gallery.rs`），同屏对照原生弹出菜单与框架自绘
   `context_menu`。
 
 ## Notification

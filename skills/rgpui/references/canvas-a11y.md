@@ -11,7 +11,7 @@
 并把辅助技术派发到这些节点的动作路由回应用。类型 `Role`/`Action`/`ActionData` 来自 `accesskit`
 （root 另有别名 `rgpui::AccessibleAction` = `accesskit::Action`、`rgpui::Role`、`rgpui::accesskit`）。
 
-示例：`cargo run -p showcase --bin canvas_a11y`（`examples/showcase/src/bin/canvas_a11y.rs`）。
+示例：`cargo run -p showcase --bin creative_gallery -- canvas_a11y`（`examples/showcase/src/bin/creative_gallery.rs`）。
 
 ## CanvasNode
 

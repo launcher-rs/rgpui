@@ -107,7 +107,7 @@ let id = mdi.update(cx, |s, cx| s.open("季度报告", cx));
 // 排布：mdi.update(cx, |s, cx| s.arrange(MdiLayout::Tabbed, cx));
 ```
 
-- 示例：`cargo run -p showcase --bin mdi`（`examples/showcase/src/bin/mdi.rs`，无 feature 门控）。
+- 示例：`cargo run -p showcase --bin creative_gallery -- mdi`（`examples/showcase/src/bin/creative_gallery.rs`，无 feature 门控）。
 - **`with_snap` 只在松手那一刻吸附**：`on_pointer_move` 内部不调 `snap_rect`，
   拖动过程没有吸附预览（要预览得自己在 move 里调 `snap_rect`）。
 - 几何一律用**局部坐标**（相对 `MdiArea` 原点）：`hit_test`/`on_pointer_*` 收的都是 local。

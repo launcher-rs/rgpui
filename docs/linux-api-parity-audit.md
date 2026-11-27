@@ -133,7 +133,6 @@ feature 未开启、托盘。**本轮不重复这些**，聚焦上一轮没有�
 | 56 | 多 seat 只取第一个，`// TODO: Multi seat support` | `wayland/client.rs:236`、`576-582`、`649` | **待做**：需把 seat 改为集合并按事件源分派 |
 | 57 | `examples/README.md:59` 把 `set_menus` 简写为「原生菜单」 | 示例自身已如实说明 Windows/Linux 只存储不渲染，README 没同步 | **已修** |
 | 58 | `window_showcase` 的 Hide Titlebar 按钮在 Wayland / CSD 下必然无效 | `examples/window_showcase/src/bin/window.rs:254-267`；`TitleBar::window_options()` 默认 CSD | **已修** |
-| 59 | `examples/README.md:143` 把 layer_shell 写成「Wayland layer shell」 | 实际 X11 走 EWMH DOCK + strut（`examples/layer_shell/README.md:3-5`） | **已修** |
 | 60 | 透明窗口示例无 X11/软件渲染环境限制提示 | `window_showcase/README.md:13`；`docs/linux-platform-audit.md:588-589` | **已修** |
 | 61 | `platform.md:185-206` 能力矩阵只列 8 项，给人「其余已对齐」错觉 | 恰好漏掉 `show_native_menu`、`prompt`、托盘 bounds/panel mode、`request_attention`、`window_control_area` 等 | **已修**：矩阵加注「只列已核对 8 项，其余见审计文档」 |
 | 62 | `start_window_move` / `start_window_resize` 文档未提 Wayland 需 MousePress serial | `platform.rs:1331-1334`、`window.rs:2925-2931` | **文档已修**：标注需从鼠标按下上下文触发 |
@@ -184,7 +183,6 @@ Linux 后端是否只是空实现」。新出现的静默 no-op 不会被 CI 拦
 | 5 | URL scheme 回调不派发 | 从 argv 提取 scheme URL（跳过 argv[0]，排除开关/路径/盘符），注册回调时重放；取回调出借用后再调用避免 RefCell 重入；补纯函数单测；core trait 文档标注各平台派发方式 | `startup_urls_only_accepts_scheme_urls` 单测 + clippy + guards | **已完成** |
 | 6 | `is_movable` / `is_resizable` / `is_minimizable` 被丢弃 | X11 把三个标志写进 Motif functions 位（关闭位恒开），并覆盖 `window_controls()`；Wayland 把应用标志与合成器上报能力取交集；`WindowOptions` 文档标注各平台落地程度；补 4 条 Motif 单测。X11 上 `is_resizable: false` 已写 WM_SIZE_HINTS min=max=初始尺寸，真正禁止缩放 | 4 条 `motif` 单测 + workspace clippy + guards | **已完成** |
 | 7 | 装饰模式双向静默回退 | 两处回退日志从 `info` 提到 `warn`（默认级别可见）；`Window::request_decorations` / `window_decorations` / `WindowOptions::window_decorations` 文档明确「请求≠实际、回退后查实际值」；复核确认两端 `window_decorations()` 本就返回协商值 | workspace clippy + guards | **已完成** |
-| 7b | 回退为 CSD 后「两边都不管」的无标题栏窗口 | 实测确认 GNOME/Mutter 不提供 `zxdg_decoration_manager_v1`（`WAYLAND_DEBUG` registry 无该 global），`hello_world` 请求 Server 后回退 Client，应用又不画标题栏，结果 Wayland 无标题栏而 Windows/macOS/X11 都有。框架在 `Window::new()` 记录「应用期望系统装饰」的普通顶层窗口，并在 `draw_roots()` 中于协商结果为 `Decorations::Client` 时补画一个带标题文字与窗口控制按钮的 `SystemTitleBar` 视图；显式 `Some(Client)` / `app_owns_titlebar_drag` / `appears_transparent` / 弹出层 / 覆盖层 / 全屏窗口不参与补画，避免与自绘 `TitleBar` 重复 | Wayland 会话启动 `showcase --bin hello_world`（不再 panic，回退日志可见、默认标题栏补画）；workspace clippy + guards | **已完成** |
 | … | （其余见第二节） | | | |
 
 ---

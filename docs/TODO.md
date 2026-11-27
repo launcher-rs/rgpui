@@ -84,11 +84,8 @@
 - `crates/rgpui/src/components/questionnaire.rs`
   - `reset()` 在「已停在第 0 步且已提交」时因 `set_current` 同值提前返回而不重绘，「已提交」标记会留在界面上。改为提交态有变化也 `cx.notify()`；新增 `reset_at_first_step_clears_submitted_marker`。
   - 内容页数与步骤数不一致时，渲染把当前页钳制到页数范围，但按钮点击走模型：页数偏少时末页显示的「提交」在模型里尚未到末步，点了没反应。改为「页码钳制、导航以步骤模型为准」，补 `fewer_pages_than_steps_still_reaches_submit`；空向导不再渲染导航按钮（此前空向导的提交按钮可点并会发出 `Submit`）。
-- `examples/showcase/src/bin/questionnaire.rs`
   - 示例宣称按步校验，但第 0 步（姓名/邮箱必填）从未回写 `set_step_valid`，空表单也能一路走到提交；第 2 步的同意勾选也只在 `on_change` 回写，初始与「重新开始」后都残留为通过。改为：初始把第 0/2 步置为不通过、订阅两个 `InputEvent::Change` 回写第 0 步校验，「重新开始」清空输入并重置第 0/2 步校验。
-  - 顺带修掉 `examples/showcase/src/bin/diff.rs` 里 `cx.new(|cx| DiffDemo::new(cx))` 的 `redundant_closure`（该 bin 只在 `--features diff` 下编译，常规 workspace clippy 覆盖不到）。
 - `crates/rgpui-term/src/terminal.rs`：`sync` 的非阻塞语义注释改为中文，并写清「解析线程释放数据锁后才发 `Wakeup`」的重绘保证；第 872 行 `count % 50 == 0` 改为 `is_multiple_of(50)`（与同文件另外两处一致）。
-- 验证：`cargo test -p rgpui --features diff --lib components::diff`（8 条，含定高容器绘制冒烟）、`cargo test -p rgpui --lib components::questionnaire`（7 条）、`cargo test -p rgpui-term --lib`（44 条）、`cargo clippy -p rgpui --features diff --all-targets -- -D warnings`、`cargo clippy -p rgpui-term --all-targets -- -D warnings`、`cargo clippy -p showcase --bin questionnaire --bin diff --features diff -- -D warnings`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo check --workspace`、`cargo fmt --all -- --check`、`cargo test -p rgpui --test guards`（9 条）均通过；未做实机截图（本轮改动为组件内部布局/状态机，绘制冒烟测试覆盖了定高容器路径）。
 
 ### 代码复查修正（2026-11-04）
 
@@ -112,12 +109,9 @@
 
 ### T11 图标能力文档化
 
-- `examples/showcase/src/bin/icons.rs`（新增）：按变体名排序渲染全部 99 个内置 `IconName`（每格图标 + 变体名，单元格宽 136 防止长变体名折行）；顶部三张用法卡片分别演示 `Icon::new(IconName::Check)`、`Icon::default().path(..).data(include_bytes!(..))`、自定义 `IconNamed`（`StarGlyph`）。
-- `examples/showcase/Cargo.toml` 登记 `[[bin]] name = "icons"`（该包 `autobins = false`）；`examples/README.md` 组件表补一行 `cargo run -p showcase --bin icons`。
 - `skills/rgpui/references/widgets.md`：Icon 小节补齐 `new` / `path` / `data` / `transform` / `rotate` / `empty` / `view` / `Sizable` / `Styled` 的源码行号与三种用法，并列出全部 `IconName` 变体（与 `crates/rgpui/assets/icons/*.svg` 一一对应）。
 - `crates/rgpui/tests/guards.rs` 新增守卫四 `icon_catalog_matches_assets`：按 `icon_named!` 同款 PascalCase 规则从 `crates/rgpui/assets/icons/*.svg` 生成期望集合，与技能文档、`icons.rs` 中出现的 `IconName::Variant` 逐一比对，缺漏与多余都报错；发布包缺输入时跳过、CI 缺失时失败（与既有三条守卫同口径）。
 - `widgets.md` 最佳实践里原有的 `IconName::Xxx` 占位写法改为真实变体 `IconName::Check`，避免被新守卫判为「引用了不存在的变体」。
-- 验证（Windows，2026-11-01）：`cargo test -p rgpui --test guards` 5 条全绿（含新守卫）；`cargo clippy -p showcase --bin icons -- -D warnings` 通过；`cargo run -p showcase --bin icons` 实机截图确认顶部三张用法卡片与 99 个图标全部渲染、无空白格，底部 `WindowClose` / `WindowMaximize` / `WindowMinimize` / `WindowRestore` 齐全；`find crates/rgpui/assets/icons -name '*.svg' -size 0` 为空。
 
 ### T10 SplitPane 键盘契约
 
@@ -136,7 +130,6 @@
 - 无障碍：面板 `Role::Grid` + `key_context("DatePicker")` + `track_focus` + `on_key_down`；日期格 `Role::GridCell` + 完整日期 `aria_label` + `aria_selected`，活动日经 `aria_active_descendant` 报告；活动日描边、选中日填充可同时出现。导航按钮 ID 带上实例序号，避免同页多实例冲突。
 - 测试钩子：`A11y::force_active_for_test`（`window/a11y.rs`，解除 `new_inaccessible` 的强制禁用并打开活跃标志）与 `Window::force_a11y_active_for_test`（`window.rs`，仅 `test` / `test-support` 编译），让测试平台也能用 `debug_a11y_tree_json` 断言树结构。
 - 测试（`date_picker::tests`，8 条）：方向键 / Home / End、跨月移动、PageUp / PageDown、闰年钳制、Enter / Space 选中 + 回调、Esc 关闭、鼠标点击选中、无障碍树（`Grid` 根、`GridCell` + `selected`、`active_descendant_focus` 指向选中日）。
-- `examples/showcase/src/bin/component_gallery.rs` 适配 `new(cx)`；`skills/rgpui/references/components.md` 更新 DatePicker API、键盘表与无障碍语义。
 - 验证（Windows，2026-11-01）：`cargo test -p rgpui --lib date_picker` 8 条全绿；`cargo check -p rgpui --all-targets` 通过。
 
 ### T8 guard 测试三件套
@@ -165,7 +158,6 @@
 - `crates/rgpui-markdown/src/rich_text.rs`：`render_blocks_selected` 把可选渲染上下文穿透到段落/标题/引用/列表/表格单元格；选区高亮按 `TextRun` 字节区间切分并替换背景色（`apply_selection_highlight`）；代码块整块作为叶子（按下置锚点，拖过时按方向扩到块首/块尾，整块选中时容器着色），表格单元格逐格命中。
 - `crates/rgpui-markdown/src/markdown.rs`：`Markdown::selection(Entity<MarkdownSelectionState>)`；每帧清空并重建叶子登记表，根节点在叶子外抬起鼠标时结束拖选。
 - `crates/rgpui-markdown/src/lib.rs` 导出 `MarkdownSelection` / `MarkdownSelectionState` / `SelectionPoint`。
-- 示例 `examples/showcase/src/bin/markdown_selection.rs`：`Ctrl+C` 复制、`Ctrl+A` 全选、`Esc` 清空、按钮清空，状态行显示已选字符数；`examples/README.md` 已登记。
 - 文档：`skills/rgpui/references/markdown.md` 新增「文档级选区（MarkdownSelectionState）」章节。
 - 验证：`selection::tests::{selected_text_spans_leaves_in_document_order,range_clamps_at_leaf_boundaries,range_snaps_to_char_boundaries}`；实机拖选跨「标题 + 段落 + 列表标题」，`Ctrl+C` 后剪贴板内容与文档一致；`Ctrl+A` 全选复制含列表标记、代码块与表格单元格（按阅读顺序），截图确认高亮与代码块整块着色。
 
@@ -174,7 +166,6 @@
 - `crates/rgpui-markdown/src/state.rs` 新增 `MarkdownState`：`new` 同步完成首次解析（首帧即有内容）；`append` / `set_source` 只更新源码，按 16 ms 防抖在后台整篇重解析；解析期间 `parsed()` 继续返回上一版块列表；每次调度递增 `generation`，后台结果回来时比对丢弃过期结果，新调度丢弃旧 `Task` 即取消旧解析。
 - `crates/rgpui-markdown/src/markdown.rs`：`ParsedMarkdown` 类型别名；全局单条缓存改为容量 8 的 LRU（`ParseCache`，命中提升为最近使用），静态 `Markdown::new` 不再因多文档轮流渲染互相踢缓存；新增 `Markdown::new_state(Entity<MarkdownState>)` 并订阅实体，解析完成自动重绘。
 - `crates/rgpui-markdown/src/lib.rs` 导出 `MarkdownState` / `ParsedMarkdown` / `parse_markdown`。
-- 示例 `examples/showcase/src/bin/markdown_stream.rs`：每 50 ms 注入 32 字节，右上角挂 `FpsHud`，含“重新播放”；`examples/README.md` 已登记。
 - 文档：`skills/rgpui/references/markdown.md` 新增「流式增量（MarkdownState）」章节与最佳实践。
 - 验证：`state::tests::append_debounces_then_publishes_parsed_blocks`（防抖窗口内保留旧块）、`independent_states_do_not_reparse_each_other`（两条流式消息互不影响）、`set_source_replaces_and_reparses`；`markdown::tests::parse_cache_is_bounded_lru`（容量与提升语义）。实机截图确认逐块渲染完成、HUD 与宽度约束正常。
 - 实测（735 字节按 32 字节 / 50 ms 注入，输出完成后取 `FpsHud`）：release 构建 **FPS 59.7、DRAW 2.14 ms**（验收线 < 8 ms）；debug 构建 DRAW 约 31.7 ms，仅作开发观察。

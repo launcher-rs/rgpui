@@ -3620,18 +3620,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "image_showcase"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "env_logger",
- "futures",
- "log",
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "imagesize"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3988,14 +3976,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "layer_shell"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4077,16 +4057,6 @@ name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
-
-[[package]]
-name = "list_showcase"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "rand 0.10.4",
- "rgpui",
- "rgpui-platform",
-]
 
 [[package]]
 name = "litemap"
@@ -5089,14 +5059,6 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
-]
-
-[[package]]
-name = "overlay_showcase"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
 ]
 
 [[package]]
@@ -6885,11 +6847,18 @@ dependencies = [
 name = "rgpui_story"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "env_logger",
+ "futures",
+ "log",
+ "lsp-types",
+ "lyon",
+ "rand 0.10.4",
  "rgpui",
  "rgpui-markdown",
  "rgpui-platform",
  "serde",
- "tempfile",
+ "serde_json",
 ]
 
 [[package]]
@@ -7858,7 +7827,6 @@ dependencies = [
  "rgpui-markdown",
  "rgpui-platform",
  "serde_json",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -8417,14 +8385,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "text_showcase"
-version = "0.1.0"
-dependencies = [
- "rgpui",
- "rgpui-platform",
 ]
 
 [[package]]
@@ -9861,15 +9821,6 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "window_showcase"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rgpui",
- "rgpui-platform",
-]
 
 [[package]]
 name = "windows"

@@ -43,7 +43,7 @@ pub fn init(cx: &mut App) {
 | `on_action::<A>(listener)` | `app.rs:2275` | 全局动作监听（冒泡末尾） |
 | `on_global_action(action, keystroke, handler)` | `app.rs:2302` | 绑定 + 打活动窗口（见下） |
 
-运行示例：`cargo run -p showcase --bin keymap`（`examples/showcase/src/bin/keymap.rs`）。
+运行示例：`cargo run -p showcase --bin form_gallery`（`examples/showcase/src/bin/form_gallery.rs`）。
 
 ## KeyBinding
 
@@ -181,7 +181,7 @@ state.read_with(cx, |state, _| state.hotkey().map(|hk| {
 ```
 
 再经 `KeyBinding::load` + `cx.bind_keys([binding])` 增量绑定。完整演示见
-`examples/showcase/src/bin/keymap.rs`（含冲突检测：同键不同动作名即提示）；
+`examples/showcase/src/bin/form_gallery.rs`（含冲突检测：同键不同动作名即提示）；
 `HotkeyValue::format_display()` 可用于回显展示。
 
 ## 全局动作 helper

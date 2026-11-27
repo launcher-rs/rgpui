@@ -21,11 +21,11 @@
 启用：`rgpui = { features = ["ribbon", "viewport", "spreadsheet", "document", "control-channel"] }`
 （默认全关，普通应用不必开启；`document` 已蕴含 `viewport`）。
 示例（按 feature 合并为 gallery，用 `-- <demo>` 选具体演示）：
-`cargo run -p showcase --bin ribbon_gallery --features ribbon -- {command_registry,ribbon,qat,mini_toolbar,backstage}`、
-`cargo run -p showcase --bin viewport_gallery --features viewport -- {viewport,ruler,canvas_objects}`、
-`cargo run -p showcase --bin spreadsheet_gallery --features spreadsheet -- {formula_bar,sheet_grid}`、
-`cargo run -p showcase --bin page_view --features document`、`cargo run -p showcase --bin automation`。
-整合演示：`cargo run -p showcase --bin app_suite`。
+`cargo run -p showcase --bin suite_gallery --features ribbon -- {command_registry,ribbon,qat,mini_toolbar,backstage}`、
+`cargo run -p showcase --bin suite_gallery --features viewport -- {viewport,ruler,canvas_objects}`、
+`cargo run -p showcase --bin suite_gallery --features spreadsheet -- {formula_bar,sheet_grid}`、
+`cargo run -p showcase --bin creative_gallery -- page_view`、`cargo run -p showcase --bin suite_gallery`。
+整合演示：`cargo run -p showcase --bin suite_gallery`。
 
 ---
 
@@ -303,7 +303,7 @@ for guide in &result.guides {            // 绘制参考线
   `hit_handle_rotated`（命中判定）、`resize_bounds`（按把手拖动出新矩形）、
   `rotate_point` / `angle_between`、`marquee_bounds` / `marquee_hits`（框选）、
   `union_bounds`、`align` / `distribute`（多选对齐与等分，配合 `AlignMode`）
-- 示例：`cargo run -p showcase --bin viewport_gallery --features viewport -- canvas_objects`
+- 示例：`cargo run -p showcase --bin suite_gallery --features viewport -- canvas_objects`
 
 ## 6. 电子表格基座（`rgpui::formula_bar` / `rgpui::sheet_grid`，feature `spreadsheet`）
 
@@ -324,7 +324,7 @@ for guide in &result.guides {            // 绘制参考线
 - 元素：`PageView`（`layout` + 视口 + 标签），`content_guide` / `area_guide` 开内容区/整页虚线框
 - 模型：`PageLayout`、`PageSetup` / `PageSize` / `PageMargins`、`PageArrangement`
   （单页 / 对开 / 连续）、`PageLabels`
-- 示例：`cargo run -p showcase --bin page_view`
+- 示例：`cargo run -p showcase --bin creative_gallery -- page_view`
 
 ## 8. 控制通道与 MCP（`rgpui::control_channel` / `rgpui::mcp`，feature `control-channel`）
 
@@ -337,5 +337,5 @@ for guide in &result.guides {            // 绘制参考线
   （`authorized`）
 - `McpServer` / `tool_name`：stdio 上的 MCP 工具面，一条命令映射一个工具
 - wasm 目标下这两个模块不编译（`not(target_family = "wasm")`），开了 feature 也没有服务端
-- 示例：`cargo run -p showcase --bin automation`（加 `--mcp` 走 stdio MCP）；
-  回归：`cargo test -p showcase --bin automation`
+- 示例：`cargo run -p showcase --bin suite_gallery`（加 `--mcp` 走 stdio MCP）；
+  回归：`cargo test -p showcase --bin suite_gallery`

@@ -13,7 +13,6 @@ RGPUI 框架的 Linux/FreeBSD 平台后端实现，支持 Wayland 和 X11 显示
 - 基于 Wayland 协议的现代显示服务器支持
 - 使用 `wayland-client` 和 `wayland-protocols` 实现
 - 支持 `wp_cursor_shape_v1` 光标形状协议
-- 支持 `layer_shell` 协议（用于面板、通知、锁屏等桌面层表面）
 - 集成 wl-clipboard 实现剪贴板功能
 - 通过 ashpd 集成 XDG Desktop Portal
 

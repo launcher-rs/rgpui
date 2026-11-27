@@ -19,7 +19,7 @@ crate 根可用 `rgpui::{TrayIconEvent, TrayMenuItem, Tray, TrayIconData}`。
 
 可运行示例：`examples/tray`（`cargo run -p tray`，
 含 `tray_simple` / `tray_menu_action` 两个 bin）、
-`examples/showcase/src/bin/daemon_app.rs`、`examples/desktop_pet`。
+`examples/showcase/src/bin/core_gallery.rs`、`examples/desktop_pet`。
 
 ## 快速入门
 

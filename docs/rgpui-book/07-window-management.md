@@ -155,4 +155,3 @@ fn open_window(cx: &mut App, title: &str) {
 
 `WindowKind::Overlay` / `WindowKind::LayerShell` 用于浮层与面板类窗口。X11 上
 LayerShell 通过 EWMH DOCK + strut 实现，Wayland 走 layer-shell 协议；详见
-`examples/layer_shell`。旧的 `create_window_group` / `set_z_index` API 不存在。
