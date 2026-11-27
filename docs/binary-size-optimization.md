@@ -1,7 +1,6 @@
 # rgpui 二进制体积优化指南
 
 > 文档日期：2026-09-22
-> 基线：`showcase` 的 `hello_world` bin（`cargo run -p showcase --bin hello_world`），Windows x86_64 MSVC，`cargo build --release`
 >
 > | 构建 | 优化前 | 优化后 | 说明 |
 > |------|--------|--------|------|

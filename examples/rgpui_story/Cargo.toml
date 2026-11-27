@@ -17,11 +17,36 @@ rgpui = { workspace = true, features = [
     "effects",
     "qr-code",
     "dom-backend",
+    "reqwest",
+    "input-latency-histogram",
+    "editor",
+    "tree-sitter",
+    "tree-sitter-json",
+    "tree-sitter-toml",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-go",
+    "ribbon",
+    "viewport",
+    "spreadsheet",
+    "document",
+    "control-channel",
+    "screen-capture",
 ] }
 rgpui-platform.workspace = true
 rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
+anyhow.workspace = true
+hdrhistogram.workspace = true
+lsp-types.workspace = true
+rand.workspace = true
+futures.workspace = true
+unicode-segmentation.workspace = true
+lyon.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
 
 [lints]
 workspace = true

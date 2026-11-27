@@ -46,7 +46,7 @@ fn manual(handle: &ScrollHandle) -> impl IntoElement {
 }
 ```
 
-示例：运行 `cargo run -p showcase --bin scrollable`（`examples/showcase/src/bin/scrollable.rs`）。
+示例：运行 `cargo run -p showcase --bin core_gallery -- scrollable`（`examples/showcase/src/bin/core_gallery.rs`）。
 
 ## 两种滚动入口
 

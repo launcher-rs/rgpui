@@ -14,7 +14,7 @@
 `MIN_ZOOM`(`:70`)/`MAX_ZOOM`(`:72`)/`DEFAULT_ASPECT_RATIO`(`:74`=16:9)/
 `AUTOSCROLL_EDGE`(`:76`)/`AUTOSCROLL_MAX_SPEED`(`:78`)。
 
-示例：`cargo run -p showcase --bin sorter`（`examples/showcase/src/bin/sorter.rs`）。
+示例：`cargo run -p showcase --bin creative_gallery -- sorter`（`examples/showcase/src/bin/creative_gallery.rs`）。
 
 ## 几何自由函数
 

@@ -3,13 +3,13 @@ name = "showcase"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "rgpui 核心组件与能力示例集合，按功能一个 bin（cargo run -p showcase --bin <名称>）"
+description = "rgpui 示例集合：8 个 gallery bin 覆盖全部组件与能力（-- <demo> 选具体演示）"
 
 # 显式登记全部 bin：带 feature 门控的 bin 需要 required-features，故关闭自动发现。
 autobins = false
 
 [dependencies]
-rgpui.workspace = true
+rgpui = { workspace = true, features = ["reqwest"] }
 rgpui-platform.workspace = true
 rgpui-markdown.workspace = true
 anyhow.workspace = true
@@ -18,17 +18,13 @@ log.workspace = true
 serde_json.workspace = true
 unicode-segmentation.workspace = true
 lyon.workspace = true
+futures.workspace = true
+rand.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 lsp-types = { workspace = true, optional = true }
 
-[dev-dependencies]
-rgpui = { workspace = true, features = ["test-support"] }
-rand.workspace = true
-futures.workspace = true
-
 [features]
-# showcase 覆盖全部组件与能力，套件基座默认开启，保证 workspace 的
-# check/test 都会编译并测试这些模块。
+# 默认开启套件基座，保证 workspace 的 check/test 会编译这些模块。
 default = [
     "ribbon",
     "viewport",
@@ -37,29 +33,17 @@ default = [
     "control-channel",
     "screen-capture",
 ]
-# Ribbon 套件基座组件（命令注册表 / Ribbon / 按键提示 / 快速访问工具栏）。
 ribbon = ["rgpui/ribbon"]
-# 视口与标尺基座组件（画布视口 / 刻度与对齐参考线）。
 viewport = ["rgpui/viewport"]
-# 电子表格基座组件（公式栏 / 电子表格网格）。
 spreadsheet = ["rgpui/spreadsheet"]
-# 文档套件基座组件（分页画布）。
 document = ["rgpui/document"]
-# 控制通道 + MCP 服务端（外部自动化 / AI 客户端调命令）。
 control-channel = ["rgpui/control-channel"]
-# 图表组件（BarChart/LineChart/PieChart 等）。
 charts = ["rgpui/charts"]
-# 封装动效（Aurora/Confetti/Marquee/Ripple/Shimmer 等）。
 effects = ["rgpui/effects"]
-# 二维码组件。
 qr-code = ["rgpui/qr-code"]
-# 文本差异查看器。
 diff = ["rgpui/diff"]
-# 输入延迟直方图统计。
 input-latency = ["rgpui/input-latency-histogram", "dep:hdrhistogram"]
-# 屏幕取色（吸管）；`color_picker` bin 里的吸管按钮在该 feature 下编译。
 screen-capture = ["rgpui/screen-capture"]
-# 编辑器（含 tree-sitter 高亮、LSP、片段、inlay 等）。
 editor = [
     "rgpui/editor",
     "rgpui/tree-sitter",
@@ -70,309 +54,49 @@ editor = [
     "rgpui/tree-sitter-go",
     "dep:lsp-types",
 ]
-# 元素检查器（release 下需要显式开启）。
 inspector = ["rgpui/inspector"]
 
-# ---------- 通用 ----------
+# ---------- 8 个 gallery bin ----------
 [[bin]]
-name = "hello_world"
-path = "src/bin/hello_world.rs"
+name = "form_gallery"
+path = "src/bin/form_gallery.rs"
+
+[[bin]]
+name = "core_gallery"
+path = "src/bin/core_gallery.rs"
 test = false
 
 [[bin]]
-name = "a11y"
-path = "src/bin/a11y.rs"
+name = "text_gallery"
+path = "src/bin/text_gallery.rs"
 test = false
 
 [[bin]]
-name = "active_state_bug"
-path = "src/bin/active_state_bug.rs"
+name = "creative_gallery"
+path = "src/bin/creative_gallery.rs"
 test = false
 
 [[bin]]
-name = "animation"
-path = "src/bin/animation.rs"
+name = "media_gallery"
+path = "src/bin/media_gallery.rs"
 test = false
 
 [[bin]]
-name = "daemon_app"
-path = "src/bin/daemon_app.rs"
+name = "suite_gallery"
+path = "src/bin/suite_gallery.rs"
+required-features = ["ribbon", "viewport", "spreadsheet", "document", "control-channel"]
 test = false
 
 [[bin]]
-name = "theme"
-path = "src/bin/theme.rs"
-test = false
-
-# ---------- 组件 ----------
-[[bin]]
-name = "form"
-path = "src/bin/form.rs"
+name = "visual_gallery"
+path = "src/bin/visual_gallery.rs"
+required-features = ["charts", "effects", "qr-code"]
 test = false
 
 [[bin]]
-name = "questionnaire"
-path = "src/bin/questionnaire.rs"
-test = false
-
-[[bin]]
-name = "diff"
-path = "src/bin/diff.rs"
-test = false
-required-features = ["diff"]
-
-[[bin]]
-name = "input"
-path = "src/bin/input.rs"
-test = false
-
-[[bin]]
-name = "extended_components"
-path = "src/bin/extended_components.rs"
-test = false
-
-[[bin]]
-name = "dialog"
-path = "src/bin/dialog.rs"
-test = false
-
-[[bin]]
-name = "sidebar"
-path = "src/bin/sidebar.rs"
-test = false
-
-[[bin]]
-name = "scrollable"
-path = "src/bin/scrollable.rs"
-test = false
-
-
-
-
-
-[[bin]]
-name = "charts"
-path = "src/bin/charts.rs"
-test = false
-required-features = ["charts"]
-
-[[bin]]
-name = "effects"
-path = "src/bin/effects.rs"
-test = false
-required-features = ["effects"]
-
-[[bin]]
-name = "qr_code"
-path = "src/bin/qr_code.rs"
-test = false
-required-features = ["qr-code"]
-
-
-
-
-
-
-
-
-
-[[bin]]
-name = "native_menu"
-path = "src/bin/native_menu.rs"
-test = false
-
-# ---------- 性能与调试 ----------
-[[bin]]
-name = "input_latency"
-path = "src/bin/input_latency.rs"
-test = false
-required-features = ["input-latency"]
-
-
-[[bin]]
-name = "inspector"
-path = "src/bin/inspector.rs"
-
-[[bin]]
-name = "inspector_custom"
-path = "src/bin/inspector_custom.rs"
-test = false
-
-# ---------- 测试基建 ----------
-[[bin]]
-name = "testing"
-path = "src/bin/testing.rs"
-
-# ---------- 国际化 ----------
-[[bin]]
-name = "i18n"
-path = "src/bin/i18n.rs"
-test = false
-
-# ---------- 富文本 / 结构化展示 ----------
-[[bin]]
-name = "markdown"
-path = "src/bin/markdown.rs"
-test = false
-
-[[bin]]
-name = "markdown_stream"
-path = "src/bin/markdown_stream.rs"
-test = false
-
-[[bin]]
-name = "markdown_selection"
-path = "src/bin/markdown_selection.rs"
-test = false
-
-[[bin]]
-name = "tabs"
-path = "src/bin/tabs.rs"
-test = false
-
-
-
-[[bin]]
-name = "fps_hud"
-path = "src/bin/fps_hud.rs"
-test = false
-
-[[bin]]
-name = "component_gallery"
-path = "src/bin/component_gallery.rs"
-test = false
-
-# ---------- 编辑器 / 工作区 ----------
-[[bin]]
-name = "editor"
-path = "src/bin/editor.rs"
-test = false
-required-features = ["editor"]
-
-[[bin]]
-name = "keymap"
-path = "src/bin/keymap.rs"
-test = false
-
-# ---------- 富剪贴板（核心 API，无需 feature） ----------
-[[bin]]
-name = "rich_clipboard"
-path = "src/bin/rich_clipboard.rs"
-test = false
-
-# ---------- 富文本（核心 API，无需 feature） ----------
-[[bin]]
-name = "rich_text"
-path = "src/bin/rich_text.rs"
-test = false
-
-# ---------- Ink 笔迹（核心 API，无需 feature） ----------
-[[bin]]
-name = "ink"
-path = "src/bin/ink.rs"
-test = false
-
-# ---------- 缩略图排序器（核心 API，无需 feature） ----------
-[[bin]]
-name = "sorter"
-path = "src/bin/sorter.rs"
-test = false
-
-# ---------- 动画时间线（核心 API，无需 feature） ----------
-[[bin]]
-name = "timeline"
-path = "src/bin/timeline.rs"
-test = false
-
-# ---------- 取色器增强（核心 API，无需 feature） ----------
-[[bin]]
-name = "color_picker"
-path = "src/bin/color_picker.rs"
-test = false
-
-# ---------- 多文档界面（核心 API，无需 feature） ----------
-[[bin]]
-name = "mdi"
-path = "src/bin/mdi.rs"
-test = false
-
-# ---------- 任务窗格（核心 API，无需 feature） ----------
-[[bin]]
-name = "task_pane"
-path = "src/bin/task_pane.rs"
-test = false
-
-# ---------- 画布语义（核心 API，无需 feature） ----------
-[[bin]]
-name = "canvas_a11y"
-path = "src/bin/canvas_a11y.rs"
-test = false
-
-# ---------- 国际文本排版（核心 API，无需 feature） ----------
-[[bin]]
-name = "intl_text"
-path = "src/bin/intl_text.rs"
-test = false
-
-# 应用套件基座整合演示（Ribbon + QAT + Backstage + 按键提示 + 分页视口共用一份命令表）。
-[[bin]]
-name = "app_suite"
-path = "src/bin/app_suite.rs"
-required-features = ["ribbon", "viewport", "document"]
-
-# ---------- 控制通道 / MCP（control-channel feature） ----------
-[[bin]]
-name = "automation"
-path = "src/bin/automation.rs"
-required-features = ["control-channel"]
-
-
-
-
-
-
-
-
-
-[[bin]]
-name = "icons"
-path = "src/bin/icons.rs"
-test = false
-
-# 交互类示例集合（拖拽 / 焦点 / 制表位 / 压感 / 菜单 / 通知等）
-[[bin]]
-name = "interaction_gallery"
-path = "src/bin/interaction_gallery.rs"
-test = false
-
-# 布局类示例集合（网格 / 状态栏 / 停靠 / 对话 / 树 / 路径基准）
-[[bin]]
-name = "layout_gallery"
-path = "src/bin/layout_gallery.rs"
-test = false
-
-# 绘制类示例集合（渐变 / 图案 / 画布绘制）
-[[bin]]
-name = "paint_gallery"
-path = "src/bin/paint_gallery.rs"
-test = false
-
-[[bin]]
-name = "ribbon_gallery"
-path = "src/bin/ribbon_gallery.rs"
-required-features = ["ribbon"]
-test = false
-
-[[bin]]
-name = "viewport_gallery"
-path = "src/bin/viewport_gallery.rs"
-required-features = ["viewport"]
-test = false
-
-[[bin]]
-name = "spreadsheet_gallery"
-path = "src/bin/spreadsheet_gallery.rs"
-required-features = ["spreadsheet"]
+name = "tools_gallery"
+path = "src/bin/tools_gallery.rs"
+required-features = ["diff", "editor", "input-latency"]
 test = false
 
 [lints]

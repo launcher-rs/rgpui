@@ -14,9 +14,9 @@ Inspector 是开发期调试工具：逐节点浏览元素树、点击选中画�
 **导出：** `pub use inspector::*`（`rgpui.rs:482`）；`inspector_panel` 模块与
 类型经 `rgpui.rs:485-488` 重导出。**不在 prelude**。
 
-可运行示例：`examples/showcase/src/bin/inspector.rs`（默认面板）、
-`examples/showcase/src/bin/inspector_custom.rs`（全自写面板）。
-运行 `cargo run -p showcase --bin inspector`。
+可运行示例：`examples/showcase/src/bin/core_gallery.rs` 的 `inspector` 模块（默认面板）、
+`inspector_custom` 模块（全自写面板）。
+运行 `cargo run -p showcase --bin core_gallery -- inspector`。
 
 ## 两行启用
 
@@ -91,7 +91,7 @@ if let Some(snapshot) = window.capture_inspector_snapshot(cx) {
   `source_label()`（`文件:行`）、`tree_key()`（跨帧稳定键）。
 
 面板自带的「复制树文本 / 复制快照 JSON」按钮即这两个调用，见
-`examples/showcase/src/bin/inspector.rs:252`。
+`examples/showcase/src/bin/core_gallery.rs` 的 `inspector` 模块。
 
 ## 崩溃快照
 

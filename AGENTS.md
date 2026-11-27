@@ -234,8 +234,8 @@ DComp 内容之上——改回 `true` 会遮挡 WebView。
    `pulldown-cmark = "0.13"`
 9. feature 组合按需通过：`charts,effects,qr-code` / `tokio` / `control-channel` / `webview` /
    `screen-capture`（吸管，Windows 本地验证）/ `dom-backend`（+ `cargo test -p rgpui-dom`）/
-   `bench`（`cargo bench -p list_showcase --bench text_shaping|scene_build`，隐含
-   `test-support`）/ `ribbon,viewport` / `spreadsheet` / `document` / `rgpui-markdown` 的 `latex`（公式）、
+   `bench`（`cargo check -p rgpui --features bench`，示例内已无 criterion 基准）/ `ribbon,viewport` /
+   `spreadsheet` / `document` / `rgpui-markdown` 的 `latex`（公式）、
    `mermaid`（图表）、`syntax-highlight`（代码高亮）/ `tree-sitter-*`（`tree-sitter`
    地基自带 Rust grammar，另有 16 个语言 feature：json/toml/javascript/typescript/
    python/bash/go/c/cpp/c-sharp/java/ruby/php/css/html/yaml）

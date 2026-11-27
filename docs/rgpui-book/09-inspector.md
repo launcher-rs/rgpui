@@ -50,7 +50,6 @@ release 想保留（如内部工具）：`--release --features inspector`
 完整可运行示例见 `showcase` 的 `inspector`（默认面板）与
 `inspector_custom`（全自写面板：自有顶栏 + 选中卡 + 单层子节点，
 并覆盖默认 Div 布局展示）两个 bin，演示内容各自独立
-（`cargo run -p showcase --bin inspector_custom`）。
 
 ## 多窗口与面板位置
 
@@ -143,7 +142,6 @@ cx.set_inspector_panel_slots(InspectorPanelSlots {
 // 自有顶栏（固定）+ 内容滚动区 + 选中卡 + 子节点列表，全自写；
 // 行点击经 window.select_inspector_element 选中画布区域，
 // Div 布局经 register_inspector_element 另行覆盖。
-// 完整实现见 examples/showcase/src/bin/inspector_custom.rs。
 cx.enable_default_inspector(); // 先 enable，拿 Div 注册与全局装配
 cx.set_inspector_renderer(Box::new(custom_panel));
 cx.register_inspector_element(custom_div_state);

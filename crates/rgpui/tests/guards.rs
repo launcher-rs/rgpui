@@ -12,7 +12,7 @@
 //!    `required-features` 必须是本包声明的 feature，引用的 `rgpui/<f>` 必须是 rgpui 的
 //!    feature；bin 的 `path` 与静态依赖 features 也一并校验。
 //! 4. [`icon_catalog_matches_assets`]：`skills/rgpui/references/widgets.md` 的 `IconName`
-//!    清单与 `examples/showcase/src/bin/icons.rs` 必须与 `crates/rgpui/assets/icons/*.svg`
+//!    清单与 `examples/showcase/src/bin/core_gallery.rs` 必须与 `crates/rgpui/assets/icons/*.svg`
 //!    完全一致，防止文档漏写或示例出现空白格。
 //! 5. [`platform_methods_have_real_call_sites`]：`Platform` / `PlatformWindow` 的每个
 //!    非测试方法都要在核心或平台后端里有一处 `platform.<方法>(` 调用 —— 这正是
@@ -979,7 +979,7 @@ fn check_icon_catalog(root: &Path) -> Result<(), String> {
     )?;
     compare_icon_list(
         "icons 示例",
-        &root.join("examples/showcase/src/bin/icons.rs"),
+        &root.join("examples/showcase/src/bin/core_gallery.rs"),
         &expected,
         &mut errors,
     )?;
@@ -1631,7 +1631,7 @@ fn icon_catalog_matches_assets() {
     let Some(root) = repo_root() else { return };
     if require(&root, "crates/rgpui/assets/icons").is_none()
         || require(&root, "skills/rgpui/references/widgets.md").is_none()
-        || require(&root, "examples/showcase/src/bin/icons.rs").is_none()
+        || require(&root, "examples/showcase/src/bin/core_gallery.rs").is_none()
     {
         return;
     }

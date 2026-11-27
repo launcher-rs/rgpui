@@ -253,6 +253,14 @@ fn sidebar_nav(
 }
 
 fn main() {
+    // 可选：以独立窗口方式运行某个 showcase 示例（RGPUI_STORY_DEMO=<名称>）。
+    if let Ok(name) = std::env::var("RGPUI_STORY_DEMO") {
+        if stories::showcase::run_standalone(&name) {
+            return;
+        }
+        eprintln!("未知示例：{name}");
+    }
+
     // wasm 下初始化 panic hook 与日志系统。
     #[cfg(target_family = "wasm")]
     rgpui_platform::web_init();

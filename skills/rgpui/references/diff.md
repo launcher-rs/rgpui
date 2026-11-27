@@ -25,8 +25,8 @@ DiffView::new(&diff_state)
     .line_height(px(20.0))
 ```
 
-示例：`cargo run -p showcase --bin diff --features rgpui/diff`
-（`examples/showcase/src/bin/diff.rs`）。
+示例：`cargo run -p showcase --bin tools_gallery --features diff`
+（`examples/showcase/src/bin/tools_gallery.rs`）。
 
 ## DiffState
 
@@ -159,5 +159,5 @@ rgpui = { version = "1.6", features = ["diff"] }
 运行示例时指定 feature：
 
 ```bash
-cargo run -p showcase --bin diff --features rgpui/diff
+cargo run -p showcase --bin tools_gallery --features diff
 ```

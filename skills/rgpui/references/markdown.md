@@ -23,7 +23,7 @@ prelude 重导出 `MarkdownPlugin`/`MarkdownRenderer`/`PluginManager`（`prelude
 示例：本 crate 的渲染示例在 Storybook —— `cargo run -p rgpui_story`（Markdown 栏目含
 基础/语法全览/公式/图表/代码高亮/大纲/综合文档故事；`examples/rgpui_story/Cargo.toml:21`
 直接声明 `features = ["latex", "mermaid", "syntax-highlight"]`，无需命令行加 feature）。
-注意 showcase 的 `cargo run -p showcase --bin markdown` 演示的是**核心 `markdown_ext`
+注意 showcase 的 `cargo run -p showcase --bin text_gallery -- markdown` 演示的是**核心 `markdown_ext`
 插件**，不依赖本 crate（该 bin 没有 `required-features`）。
 
 ## Markdown 组件
@@ -57,7 +57,7 @@ state.update(cx, |state, cx| state.append("# 你好", cx));
 let element = Markdown::new_state(state);
 ```
 
-完整示例：`cargo run -p showcase --bin markdown_stream`（逐块注入 + 状态行 + 重新播放）。
+完整示例：`cargo run -p showcase --bin text_gallery -- markdown_stream`（逐块注入 + 状态行 + 重新播放）。
 
 ## 文档级选区（MarkdownSelectionState）
 
@@ -100,7 +100,7 @@ let element = Markdown::new(source).selection(selection.clone());
 selection.update(cx, |state, cx| state.copy_to_clipboard(cx));
 ```
 
-完整示例：`cargo run -p showcase --bin markdown_selection`（拖选、`Ctrl+A` 全选、
+完整示例：`cargo run -p showcase --bin text_gallery -- markdown_selection`（拖选、`Ctrl+A` 全选、
 `Ctrl+C` 复制、`Esc` 清空 + 状态行）。
 
 ## 富文本块模型
@@ -215,4 +215,4 @@ rgpui-markdown = { workspace = true, features = ["latex", "mermaid"] }
 - **目录/跳转**用 `extract_headings`（`Heading.anchor` 同名自动去重）。
 - **链接点击**用 `on_link_click`；代码块用 `CodeBlock`（行号/高亮/复制）。
 - **区分两套 Markdown**：本 crate 渲染真实 UI 元素；核心 `markdown_ext` 是
-  HTML 字符串插件管线（`cargo run -p showcase --bin markdown`）。
+  HTML 字符串插件管线（`cargo run -p showcase --bin text_gallery -- markdown`）。

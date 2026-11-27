@@ -35,7 +35,7 @@ cx.subscribe(&state, |this, _, ev: &InputEvent, cx| {
 Input::new(&state)
 ```
 
-示例：`cargo run -p showcase --bin input`（`examples/showcase/src/bin/input.rs`）。
+示例：`cargo run -p showcase --bin form_gallery`（「输入框」段）（`examples/showcase/src/bin/form_gallery.rs`）。
 
 ## InputState
 

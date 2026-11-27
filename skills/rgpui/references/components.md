@@ -69,7 +69,7 @@ tree 的快捷键。由统一 `init.rs:30` 调用。
 同步三滑块与 hex 并触发 `on_change`，颜色以传入值为准不受滑块步长量化）、
 `begin_eyedropper(cx)`（`:171`，启动吸管，`screen-capture` feature 门控；取回的色经
 `pending_pick` 在下一次 render 应用）。最近颜色记录时机：点色板色块、hex 输入框回车、
-或应用显式 `push_recent`。示例：`cargo run -p showcase --bin color_picker`。
+或应用显式 `push_recent`。示例：`cargo run -p showcase --bin creative_gallery -- color_picker`。
 
 **ColorPalette**（`color_palette.rs:75`，`#[derive(IntoElement)]` 色块自动换行网格，
 无 feature 门控；可作取色器快捷色板，也可独立用于「选一个预设色」）：
@@ -247,7 +247,7 @@ action：`OTPBackspace`/`OTPDelete`/`OTPLeft`/`OTPRight`/`OTPHome`/`OTPEnd`/`OTP
 | `dom-backend` | `dom_svg`（内部） | `components/dom_svg.rs` |
 | `screen-capture` | 吸管 `open_eyedropper`/`EyedropperResult`（`ColorPickerState::begin_eyedropper` 接线） | `eyedropper.rs` |
 
-启用示例：`cargo run -p showcase --all-features --bin charts` / `--bin effects` / `--bin qr_code`。
+启用示例：`cargo run -p showcase --features charts,effects,qr-code --bin visual_gallery -- charts|effects|qr_code`。
 
 ## 最佳实践
 

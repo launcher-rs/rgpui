@@ -148,7 +148,6 @@ P0 第一件（命令注册表）已落地，作为其余 P0 件（Ribbon/视口
 - **命令面板接入**：`CommandPaletteState::from_registry()` /
   `CommandPalette::from_registry(window, cx)` / `Command::from_descriptor(&descriptor)`
   （选中时按 id 派发）。
-- **示例**：`examples/showcase/src/bin/command_registry.rs`（`cargo run -p showcase --bin command_registry`）。
 - **测试**：`commands::tests`（4）+ `command_palette::tests`（1）。
 
 > 说明：命令 id 即动作名称，因此注册表与既有 Action 系统零冲突、零迁移成本；
@@ -177,7 +176,6 @@ P0 第二件（Ribbon 框架）已落地，直接建立在命令注册表之上�
   - `Ribbon`：`new(&Entity<RibbonState>, Vec<RibbonTab>).collapsed(bool)`，`RenderOnce` 元素；
     选项卡条 + 激活 tab 内容；连续小按钮自动聚成每列 ≤3 的竖列。
   - `RibbonContext`：上下文选项卡的强调色（`new(label, color: impl Into<Hsla>)`）。
-- **示例**：`examples/showcase/src/bin/ribbon.rs`（`cargo run -p showcase --bin ribbon`），
   含两个选项卡、大/小按钮、切换按钮、下拉按钮与上下文选项卡。
 - **测试**：`ribbon::tests`（5：状态默认值、标签回退×3、绘制与切换选项卡冒烟）。
 
@@ -196,7 +194,6 @@ P0 第三件（视口）已落地，提供所有「画布/页视图/网格」共
   - **平移/安置**：`pan_by(delta)`、`center(document, view)`、`fit(document, view, padding)`。
   - **滚轮**：`apply_wheel(&ScrollWheelEvent, line_height)`（`Ctrl/⌘` 以光标为中心缩放，
     否则平移）。
-- **示例**：`examples/showcase/src/bin/viewport.rs`（`cargo run -p showcase --bin viewport`），
   A4 页视图：`canvas` 自绘，滚轮缩放/平移 + 左键拖拽平移 + 缩小/放大/100%/适应窗口。
 - **测试**：`viewport::tests`（7：单位映射、缩放往返、平移、锚点缩放、上下限、fit/center）。
 
@@ -216,7 +213,6 @@ P0 第四件（标尺/参考线）已落地，为纯计算工具库（无状态�
     按左/中/右与上/中/下六个锚点吸附到其它矩形或自由参考线，每轴取偏移最小的候选；
     返回位移修正 `offset` 与需绘制的 `Guide { axis, position, anchor }`。
   - 类型：`GuideAxis`（Vertical/Horizontal）、`Anchor`（Start/Center/End）、`Guide`、`SnapResult`。
-- **示例**：`examples/showcase/src/bin/ruler.rs`（`cargo run -p showcase --bin ruler`），
   顶部标尺刻度 + 拖拽两个方块互相吸附并显示红色参考线（`Ctrl/⌘` + 滚轮缩放标尺）。
 - **测试**：`guides::tests`（8：步长、刻度、零缩放、左边缘/最小偏移/超阈值/额外参考线/双轴吸附）。
 
@@ -239,7 +235,6 @@ P1 第一件（按键提示）已落地，补齐 Ribbon 系的键盘可达性：
   - `crates/rgpui/src/commands.rs`：`CommandDescriptor::with_keytip` / `keytip()`，
     让提示键与标签/快捷键同源登记。
 - **提示键来源**：显式覆盖 > 注册表登记 > 从标签首个 ASCII 字母派生。
-- **示例**：`examples/showcase/src/bin/ribbon.rs`（`cargo run -p showcase --bin ribbon`），
   已为命令/选项卡登记提示键，按 `Alt`/`F10` 演示逐层键盘导航。
 - **测试**：`keytips::tests`（7：单键/多字符前缀/精确优先/跳过空/大小写/可见性/派生）
   + `ribbon` 提示流程测试（选项卡选择、命令派发、Esc 退出、注册表提示优先）。
@@ -258,7 +253,6 @@ P1 第二件（快速访问工具栏）已落地：一排按**命令 id** 绑定
   - 标签来源：显式覆盖 > 注册表 `CommandRegistry::label_for(id)` > 命令 id 本身。
 - **注册表配套**：`CommandRegistry::label_for(id)`（未登记时回退为 id），
   Ribbon / QAT / 菜单等按 id 绑定的 UI 共用。
-- **示例**：`examples/showcase/src/bin/qat.rs`（`cargo run -p showcase --bin qat`），
   顶部 QAT（保存/撤销/重做/分隔/查找/设置）+ 等价普通按钮 + 最近派发回显。
 - **测试**：`qat::tests`（3：标签覆盖优先、注册表/ id 回退、零交互绘制）。
 
@@ -275,7 +269,6 @@ P1 第三件（迷你工具栏）已落地：选中文本/对象时就近浮出�
   - 项渲染与 QAT 共享 `qat::render_item`（按钮 / 分隔符）。
 - **配套**：QAT 按钮按下时终止冒泡（`cx.stop_propagation()`），
   使浮动工具条上的点击不会打断父级的拖拽选择手势。
-- **示例**：`examples/showcase/src/bin/mini_toolbar.rs`（`cargo run -p showcase --bin mini_toolbar`），
   在「文档」上拖动选择 → 就近浮出 B/I/U/高亮/复制，按钮切换状态并在状态条回显；`Esc` 取消选择。
 - **测试**：`mini_toolbar::tests`（2：流式渲染、绝对定位渲染）。
 
@@ -296,7 +289,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
     打开时由调用方 `window.focus(...)` 交付焦点。
 - **边界**：不做页面内容的业务实现（模板列表、设置表单由应用层提供），
   也不加全局快捷键绑定（避免与 KeyTips / 应用自身键位冲突），入口由调用方提供。
-- **示例**：`examples/showcase/src/bin/backstage.rs`（`cargo run -p showcase --bin backstage`），
   顶栏「文件」按钮展开面板，六个页面覆盖内容页与命令页，模板点击回写主视图。
 - **测试**：`backstage::tests`（2：状态开关与页面切换、关闭态为空 / 打开态可绘制）。
 
@@ -328,7 +320,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **按键提示**：三类新控件均纳入 `control_commands`——分裂按钮命中主命令、
   库命中首项、组合框命中当前选中项（无选中取首项）。
 
-- **示例**：`examples/showcase/src/bin/ribbon.rs` 增补分裂粘贴、样式库、插入组合框。
 - **测试**：新增 4 项（折叠切换与选项卡展开、新控件按键提示、库/组合框提示回退、
   分裂按钮构建），`ribbon::tests` 共 12 项。
 
@@ -348,7 +339,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **`FormulaBar` 元素**：`new(&Entity<FormulaBarState>)`，可调 `name_width`、
   `show_name_box`/`show_controls`/`show_function`/`show_expand`；根挂
   `key_context("FormulaBar")` + `on_key_down`（`Esc` 冒泡转 `Cancel`）。
-- **示例**：`examples/showcase/src/bin/formula_bar.rs`（绑定 4×5 迷你单元格模型，
   名称框输入引用跳转、公式框回车写入、`fx` 插入 `=SUM(`、`Esc` 回退）。
 - **测试**：5 项（名称/公式读写、展开切换、回车转发名称/公式、`Esc` 取消）。
 
@@ -383,7 +373,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `capture_any_mouse_up` 结束拖拽/填充。
 - **`SheetGrid<D>` 元素**：`new(&Entity<SheetGridState<D>>)`，薄包装
   `key_context("SheetGrid")` + `track_focus` + 键盘/鼠标释放处理。
-- **示例**：`examples/showcase/src/bin/sheet_grid.rs`（`SheetGrid` + `FormulaBar`
   绑定 8×6 迷你表格：选区同步公式栏、公式回车写回、填充柄复制）。
 - **测试**：7 项（列标签映射、选区归一化/包含/夹取、读取行列数、选区夹取与事件、
   行列头事件、移动/扩展/全选、编辑态更新）。
@@ -420,7 +409,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   （默认开）、`.area_guide(bool)` 描边页眉页脚区。纸页为白底 + 边框的绝对定位 div，
   子元素按 `viewport` 换算到屏幕后落位，故缩放时纸与页眉页脚同步；纸页位置全部
   取自 `page_rect`，切换排布后自动跟随。
-- **示例**：`examples/showcase/src/bin/page_view.rs`（三页 A4 文档，正文按
   `content_rect` 叠加、字号随缩放同步；滚轮 Ctrl/⌘ 缩放、拖拽平移、适应窗口；
   工具栏「排布」按钮在 单页 / 对开 / 封面对开 之间循环）。
 - **测试**：8 项（默认设置、横纵互换、整页排布、内容区内缩、文档总尺寸、命中判定、
@@ -452,7 +440,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   - `distribute(rects, axis)` 沿轴等间距分布（≥3 个，两端不动）。
 - **`SelectionHandles` 元素**：`new(selection, viewport)`，`handle_size(px)`、`rotate(bool)`；
   选区描边 + 手柄方块，缩放/平移时同步（旋转态请用上面的 `*_rotated` 几何自绘）。
-- **示例**：`examples/showcase/src/bin/canvas_objects.rs`（三张卡片：点选/拖动/手柄缩放/
   旋转手柄旋转 + 左·居中·右对齐与水平分布）。
 - **测试**：12 项（手柄位置、命中容差、缩放锚点与最小尺寸、对侧手柄、绕点旋转、
   角度差、旋转手柄跟随、外接矩形、框选归一化与两种口径、对齐、分布）。
@@ -485,7 +472,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
     TARGETS（纯文本、HTML/RTF、图像），自定义 MIME 运行时 `intern_atom` 并缓存；
     Wayland（`linux/wayland/clipboard.rs`）：数据源按内容 offer 富 MIME，`send` 按请求的
     MIME 回送对应字节。
-- **示例**：`examples/showcase/src/bin/rich_clipboard.rs`（复制 HTML/RTF/CSV 三种项目，
   粘贴后列出剪贴板上每种格式与预览）。
 - **测试**：`platform::clipboard_tests` 5 项（HTML/RTF/仅格式/非 UTF-8/构建器顺序）；
   `rgpui-windows::clipboard` 3 项（`CF_HTML` 往返、偏移量一致、缺标记返回 `None`）；
@@ -520,7 +506,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **渲染元素**：`RichText::new(doc)` 逐段落编译成 `StyledText`（行内属性映射到 `TextRun` 的
   字体粗细/斜体/下划线/删除线/颜色），按段落 `text_align` 与缩进排版，列表段以
   「• 」/「N. 」标记开头；`RenderOnce` + `From<RichTextDoc>`。
-- **示例**：`examples/showcase/src/bin/rich_text.rs`（样例文档 + 按词命中套用样式 + 对齐/
   列表切换 + 复制为 HTML / 从剪贴板反解析）。
 - **测试**：`rich_text::tests` 12 项（纯文本往返、段中插字拆运行、插换行拆段、跨段删除合并、
   拆/并段、跨段应用样式、HTML 往返含转义/下划线/删除线/颜色/列表/对齐/浏览器片段、空与超长
@@ -574,7 +559,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   `hit_test`（自顶向下首个可见层）、`lasso`（返回 `(图层, 笔画)`）、`bounds`（可见层并集）。
   应用逐层创建 `InkLayerElement::new(layer.layer.clone()).opacity(layer.opacity)` 叠加，
   隐藏层跳过即可。
-- **示例**：`examples/showcase/src/bin/ink.rs`（画布层 + 工具条：钢笔/荧光笔/橡皮/套索、
   撤销、删除选中、清空、压感笔开关（鼠标输入按轨迹长度合成压感）；新建 / 切换 / 隐藏 /
   锁定图层）。
 - **测试**：`ink::tests` 19 项（原有 11 项：落笔-提交-撤销、最小间距过滤、取消落笔、按半径
@@ -618,7 +602,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   返回本帧增量（`0` 表示可停掉前台定时器）；组件本身不持有定时器。
 - **多选整组拖动**：拖的是选中项之一且选中多于一项时，`finish_drag` 抛
   `SorterEvent::ReorderMany { from, to }`（`from` 升序，`to` 是抽走后的落位索引）。
-- **示例**：`examples/showcase/src/bin/sorter.rs`（12 张彩色幻灯片卡 + 工具条：缩小/放大/新建/
   删除选中；重排后按事件真正调整 `slides` 顺序）。
 - **测试**：`sorter::tests` 10 项（缩放夹取与宽高比归一化、单元格尺寸、换行列数、插入槽中线判定、
   移动目标换算、边缘自动滚动、整组落位、选择三种变体与越界忽略、拖拽重排 / 无位移 / 取消、
@@ -674,7 +657,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
 - **绘制**：每条展开且至少有 2 个关键帧的轨道在行内画一条值曲线（`canvas` 画布 + 80% 不透明度
   主题主色），关键帧方块压在曲线对应高度上（`value_to_y`，夹在行内不越界），选中帧用主色高亮；
   折叠行不画曲线与方块。
-- **示例**：`examples/showcase/src/bin/timeline.rs`（六轨：位置 X / 缩放 / 透明度 / 旋转 / 模糊 /
   颜色，后三轨把轨道区撑到需要纵向滚动；工具条含播放、回到开头、加/删关键帧、缩放、吸附开关、
   轨道上移 / 下移 / 折叠；预览方块由前三条轨道的当前值驱动，播放时后台按 1/60s 推进）。
 - **测试**：`anim_timeline::tests` 18 项（归一化与去重、三种插值求值、命中 / 移动 / 删除关键帧、
@@ -717,7 +699,6 @@ P1 第四件（应用菜单）已落地：覆盖整窗的「文件」面板，�
   - 渲染：预览块 / 三滑块 / hex 输入之后追加「主题色」与「最近」两段色板；点击色块即应用并记入
     最近颜色；hex 输入框回车视为提交，把当前颜色记入最近颜色；应用也可显式 `push_recent`（如对话框
     点「确定」时）。最近颜色为空时不渲染该段。
-- **示例**：`examples/showcase/src/bin/color_picker.rs`（左：带色板的取色器 + 「记录当前颜色 /
   清空最近」按钮；右：预览卡（按亮度自动选前景色）+ 独立命名色阶色板，点击直接应用到取色器）。
 - **测试**：`color_palette::tests` 3 项（最近颜色去重置顶 / 截断 / 重复无变化；命名色阶色板与
   `ColorName::all()` 一一对应且色阶回退；主题色板含语义色并完成一次真实绘制）+ `color_picker::tests`
@@ -768,7 +749,6 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   元素本身不带泛型参数，便于 `#[derive(IntoElement)]`。
 - **键盘**：`Ctrl+Tab` / `Ctrl+Shift+Tab`、`Ctrl+F6` / `Ctrl+Shift+F6` 循环切换；`Ctrl+F4` 关闭
   激活窗口；`Ctrl+M` 最小化激活窗口；`Esc` 取消当前拖拽。
-- **示例**：`examples/showcase/src/bin/mdi.rs`（新建 / 只读视图 / 层叠 / 水平平铺 / 垂直平铺 /
   页签 / 全部最小化 / 关闭全部；窗口正文内嵌按钮验证「正文可交互 + 点击自动激活」）。
 - **测试**：16 项 —— 纯几何 7 项（层叠与平铺落在区域内且铺满、夹取最小尺寸与标题栏可见、
   边 / 角判定与最小尺寸回退、标题栏按钮右对齐与图标条从左排列、吸附阈值内吸到边/中线、
@@ -840,7 +820,6 @@ id 现渲染，因此应用可随时增删文档、换主题、重排而无需�
   拖拽会话），`on_hover` 维护悬停态；命中优先顺序：缩放边 / 角 → 内缘把手 → 关闭按钮 →
   页签 → 标题栏 → 正文（收起时直接 `TitleBar`）。
 - **键盘**：`Esc` 取消当前拖拽；`Ctrl+Tab` / `Ctrl+Shift+Tab` 循环切页签。
-- **示例**：`examples/showcase/src/bin/task_pane.rs`（显示 / 隐藏、停靠左 / 右、浮动 / 回停靠、
   加宽 / 收窄、关闭按钮开关、自动隐藏开关、下一个页签；标题栏是「属性 / 大纲」页签组，正文
   实时读取窗格宽度与停靠侧并随页签切换内容）。
 - **测试**：14 项 —— 纯几何 4 项（宽度夹取与内缘拖拽换算、把手 / 关闭按钮 / 浮动默认矩形、
@@ -942,7 +921,6 @@ div / 虚拟列表渲染、原生进入无障碍树（单元格还带 `sheet-cel
 - **字形重排**（UBA 的完整实现：逐 run 方向 + 视觉序）仍属平台 shaping 的职责：Web /
   cosmic-text 后端内部已用 `unicode-bidi`，Windows DirectWrite 后端把整行交给
   `IDWriteTextLayout` 自行重排。核心层负责的是「方向是谁」与「断在哪」。
-- **示例**：`examples/showcase/src/bin/intl_text.rs`（方向判定表 + 每项的首个强方向字符、
   `Left`/`Start`/`End`/`Right` 在 RTL 文本上的对照、窄容器里的禁则换行、`can_break_between`
   与 `break_class` 速查表）。
 - **测试**：11 项 —— `bidi` 5 项（首个强方向字符 / 弱方向字符不决定方向 / 方向标记为强方向 /
@@ -982,7 +960,6 @@ div / 虚拟列表渲染、原生进入无障碍树（单元格还带 `sheet-cel
 - **入口**：`ControlChannel::start(cx, options)` / `App::start_control_channel(options)`、
   `McpServer::start_stdio(cx)`；句柄丢弃即停止（accept 任务与前台风泵任务一起取消）。
   未初始化 Tokio 时自动补一次 `rgpui::tokio::init`。
-- **示例**：`examples/showcase/src/bin/automation.rs` —— 控制台打印 `RGPUI_CONTROL_CHANNEL` /
   `RGPUI_CONTROL_KEY`（`--mcp` 时改打 stderr，保证 stdout 只有 JSON-RPC），窗口里显示地址、
   密钥与计数器；外部 `command.dispatch` 或 MCP `tools/call` 都能实时改计数。
 - **测试**：19 项 —— 控制通道 9 项（密钥 / ping / 通知无回复 / 未知方法 / `commands.list` /
@@ -1071,7 +1048,6 @@ MCP 的 `prompts` / `resources` / `sampling`、控制通道的请求限流与审
    `spreadsheet` / `document` / `webview`；`cargo test -p rgpui-dom` 15 项通过。
 10. `cargo publish -p rgpui --dry-run --registry crates-io` 通过。
 11. 无 dev 循环依赖（测试放在消费方 `tests/`）。
-12. 命令清单 gate：`CommandRegistry::validate()` 为空；`cargo test -p showcase --bin automation`
     通过。
 
 已知波动（与本轮改动无关）：`util::scheduler::tests::test_nondeterministic_wake_allowed_with_parking`
@@ -1315,14 +1291,12 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 
 ### 示例
 
-`examples/showcase/src/bin/rich_text.rs` 增加「添加批注 / 删除首条批注 / 插入脚注 /
 删除首条脚注」四个按钮与批注 / 脚注清单区（样例文档预置一条批注与一个脚注）。
 
 ### 验证
 
 - `cargo test -p rgpui --lib rich_text`：16 passed（新增 4 项：批注增删查、批注区间随
   编辑平移、脚注插入与删除、批注/脚注 HTML 往返）。
-- `cargo check -p showcase --bin rich_text` 通过；`cargo check --workspace` 通过。
 
 ## 三十八、增补：Markdown 文档大纲（TOC）提取
 
@@ -1358,7 +1332,6 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 
 ### 示例
 
-`examples/showcase/src/bin/rich_text.rs` 增加「替换『项目符号』→『条目』」按钮，演示
 查找替换与属性沿用。
 
 ### 附带修复：标题级别在 HTML 往返中丢失
@@ -1408,7 +1381,6 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 
 ### 示例
 
-`examples/showcase/src/bin/rich_text.rs`：行内样式与「替换」操作改走
 `history.edit`，新增「撤销 / 重做」按钮。
 
 ### 验证
@@ -1433,7 +1405,6 @@ rgpui 核心 `components/mermaid.rs` 已有 `MermaidDiagram`：**flowchart 子�
 
 ### 示例
 
-`examples/showcase/src/bin/rich_text.rs`：样例正文加入「链接」运行，并演示
 `on_link_click` 回传地址。
 
 ### 验证
@@ -1516,7 +1487,6 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 
 ### 编辑器示例的多语言入口
 
-`examples/showcase/src/bin/editor.rs` 的语言按钮从只有 `rust` 扩到
 `rust` / `python` / `javascript` / `go` / `json` / `demo` / 未知语言降级，
 对应 showcase 的 `editor` feature 追加启用 `tree-sitter-json` / `tree-sitter-toml` /
 `tree-sitter-javascript` / `tree-sitter-python` / `tree-sitter-go` 语言包。
@@ -1530,7 +1500,6 @@ HTML 双向：`from_html` 解析 `line-height` / `margin-top`，`to_html` 输出
 ### 验证
 
 - `cargo test -p rgpui --lib rich_text`：27 passed（新增 1 项：行内代码往返）。
-- `cargo check -p showcase --bin editor --features editor` 与
   `cargo check -p showcase --all-features` 通过。
 
 ## 四十七、增补：LSP 格式化（文档 / 选区）
@@ -1546,7 +1515,6 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 - 编辑应用：LSP 行列按 UTF-8 字节列换算（`PositionMapping`，与诊断下划线同款），
   编辑**按字节偏移倒序**应用（靠前编辑的位置不受后面改动影响），应用前抑制一次自动补全，
   应用后光标回到原位置（与「接受代码操作」同款逻辑）。
-- 示例：`examples/showcase/src/bin/editor.rs` 注入假格式化 provider（去行尾空白）并加
   「格式化文档（LSP）」按钮。
 
 ### 验证
@@ -1568,7 +1536,6 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
   （`code_actions::edits_for_workspace_edit`，代码操作与重命名共用）——
   `changes` / `documentChanges` 两种形式都支持，未设文档 URI 时只在编辑确实只涉及一个
   文档时应用，避免猜错目标。
-- 示例：`examples/showcase/src/bin/editor.rs` 注入假重命名 provider（把光标处的词改名）
   并加「重命名光标处 → renamed」按钮。
 
 ### 验证
@@ -1586,7 +1553,6 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
   （跳转：命中位置在**当前文档**时直接移动光标）、`find_references`（结果写入状态供应用
   渲染列表）、`definition_locations`（应用读取结果）。请求同样走 epoch 防抖。
 - 位置换算复用 `PositionMapping`（UTF-8 字节列，与诊断下划线同款）。
-- 示例：`examples/showcase/src/bin/editor.rs` 注入假定义 provider 并加「跳转定义（LSP）」按钮。
 
 ### 验证
 
@@ -1600,7 +1566,6 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
   可见性）。
 - `EditorState` 新增 `set_signature_help_provider`（注入 / 断开）、
   `request_signature_help`（请求，epoch 防抖）、`signature_help_state`（应用层读状态渲染浮层）。
-- 示例：`examples/showcase/src/bin/editor.rs` 注入假签名提示 provider 并加「签名提示（LSP）」按钮。
 
 至此 LSP 客户端 trait 里的主要请求（补全 / 悬停 / 诊断 / 格式化 / 重命名 / 定义引用 /
 签名提示）在编辑器侧都有了触发入口。
@@ -1658,7 +1623,6 @@ LSP 客户端 trait 早就有 `formatting` 请求，但**编辑器侧没有触�
 
 ### 示例
 
-`examples/showcase/src/bin/rich_text.rs` 与 `examples/rgppui_story` 的「富文本」页都补了
 一张两列表格。
 
 ### 验证
@@ -2693,12 +2657,10 @@ CI 概览与「Linux 端构建前置」三处口径同步跟上。若 ubuntu / m
   这个 `Option<bool>` 从合并进来就没有读者。
   删后 `grep -rn 'allow(dead_code)' crates/rgpui-linux` 为空。
 
-### 新增套件基座整合示例 `showcase --bin app_suite`
 
 单功能示例已经一个模块一个 bin（`command_registry` / `ribbon` / `qat` /
 `mini_toolbar` / `backstage` / `viewport` / `ruler` / `canvas_objects` /
 `formula_bar` / `sheet_grid` / `page_view` / `automation`），缺的是**它们怎么协同**。
-`examples/showcase/src/bin/app_suite.rs`（`required-features = ["ribbon", "document"]`）
 补上这一层：
 
 - 一份命令表（26 条，全部 `app_suite::` 前缀）同时喂给 QAT、Ribbon（含 Alt/F10
@@ -2712,7 +2674,6 @@ CI 概览与「Linux 端构建前置」三处口径同步跟上。若 ubuntu / m
   借电子表格基座的「待重算」语义演示命令驱动模型。
 - 照抄 `automation.rs` 的 gate：`#[cfg(test)]` 里
   `assert!(CommandRegistry::global().validate().is_empty())`，
-  跑法 `cargo test -p showcase --bin app_suite`（本批通过）。
 - 按键提示在整块功能区内互不相同（选项卡 H/J/N/K，条目用其余字母）——
   `validate()` 不查 keytip 唯一性，靠人工分配。
 - 实跑截图核对过顶栏、功能区、纸页页眉页脚与「合计 待重算」的渲染。

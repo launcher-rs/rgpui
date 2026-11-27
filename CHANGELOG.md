@@ -376,7 +376,6 @@ atlas 提供 `upload_texture` 钩子）、透明 pass 的真 alpha 混合。
   tabs、tree、chat、dock、keymap、status_bar、fps_hud、component_gallery 等）
   都有独立命名、便于检索的示例，不再埋在版本导航里。
 - 顶层 `examples/` 由 49 个 crate 精简为 17 个；重依赖/平台相关示例（webview、
-  term、3d、screen_capture、layer_shell、tokio、tray 及各类 `*_showcase`）保持独立。
 - 新增 `examples/README.md` 作为示例索引（分类 + 一句话说明 + 运行命令）；带
   feature 的 bin（charts/effects/qr-code/input-latency/editor）用 `required-features`
   门控，CI 增加 `cargo check -p showcase --all-features` 覆盖。

@@ -12,7 +12,7 @@
 - 手势：`mouse_gestures/mod.rs`（`pub mod mouse_gestures;` `rgpui.rs:263`）。
 - 滚动物理：`scroll_physics/mod.rs`（`pub mod scroll_physics;` `rgpui.rs:266`）。
 
-示例：`cargo run -p showcase --bin animation`。
+示例：`cargo run -p showcase --bin core_gallery -- animation`。
 
 ## Animation
 

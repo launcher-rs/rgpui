@@ -123,7 +123,7 @@
 
 ## 示例与最佳实践
 
-示例：`cargo run -p showcase --bin rich_text`（`examples/showcase/src/bin/rich_text.rs`，
+示例：`cargo run -p showcase --bin text_gallery -- rich_text`（`examples/showcase/src/bin/text_gallery.rs`，
 演示选词套样式、段落对齐/列表、HTML 双向 + 剪贴板对接、历史撤销）。
 
 ```rust

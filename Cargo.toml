@@ -15,8 +15,18 @@ members = [
     "crates/rgpui-web",
     "crates/rgpui-wgpu",
     "crates/rgpui-windows",
-    # examples
-    "examples/*",
+    # examples（显式列出：image_showcase 仅保留共享资产，不是 crate）
+    "examples/desktop_pet",
+    "examples/desktop_pet_3d",
+    "examples/rgpui_story",
+    "examples/rgpui_term_basic",
+    "examples/rgpui_term_integration",
+    "examples/screen_capture",
+    "examples/showcase",
+    "examples/tokio_example",
+    "examples/tray",
+    "examples/view_example",
+    "examples/webview",
 ]
 
 [workspace.package]
