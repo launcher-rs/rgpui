@@ -439,6 +439,9 @@ pub struct InputState {
     pub(crate) context_menu_override: Option<InputContextMenuBuilder>,
     /// 只读模式：保持正常样式，允许移动/选择/复制，拦截一切用户编辑。
     pub(crate) read_only: bool,
+    /// 编辑器内联输入框的整套度量快照（见 `EditorMetrics`）。用于去重：
+    /// 同一份度量的 render 不重复写入、不触发 notify；只在变化时同步各项。
+    pub(crate) editor_metrics: Option<super::editor_input::EditorMetrics>,
     /// 字号覆盖：Editor 组件通过此字段透传缩放字号，TextElement 使用时优先于 window.text_style()。
     pub(crate) font_size_override: Option<crate::Pixels>,
     /// 行高覆盖：富文本编辑器把外部段落行高透传给 Input，避免内部按字号推导并取整后
@@ -595,6 +598,7 @@ impl InputState {
             context_menu_extra: None,
             context_menu_override: None,
             read_only: false,
+            editor_metrics: None,
             font_size_override: None,
             line_height_override: None,
             cursor_width_override: None,

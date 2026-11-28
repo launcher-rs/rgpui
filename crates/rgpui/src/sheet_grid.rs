@@ -1248,6 +1248,10 @@ impl<D: SheetDelegate> SheetGridState<D> {
                         .focus_bordered(false)
                         .h_full()
                         .w_full()
+                        // 静态单元格文字垂直居中且没有内边距；输入框默认
+                        // 带 input_py（Medium 为 8px），进入编辑会把文字
+                        // 整体压低。单元格内编辑清掉纵向内边距。
+                        .py(px(0.0))
                         .px(px(2.0)),
                 )
                 .into_any_element();

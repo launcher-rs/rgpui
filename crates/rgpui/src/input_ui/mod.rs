@@ -65,6 +65,7 @@ pub use input::{
     SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine,
     ShowCharacterPalette, Undo,
 };
+pub use input::{EditorInput, EditorMetrics};
 pub use input::{
     GutterStyle, InputContentType, MaskPattern, NumberInput, NumberInputEvent, NumberStep, TextArea,
 };

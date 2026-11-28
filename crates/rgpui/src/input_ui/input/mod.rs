@@ -5,6 +5,8 @@
 /// 子模块仅限 `input_ui` 内部经 `input::` 路径引用（`pub(super)`），公开 API 走下方重导出。
 pub(super) mod clear_button;
 pub(super) mod content_type;
+/// 编辑器内联输入框：统一 Word/Markdown/Excel 的编辑态度量。
+pub mod editor_input;
 pub(super) mod element;
 pub(super) mod mask_pattern;
 pub(super) mod mode;
@@ -15,6 +17,7 @@ pub(super) mod widget;
 
 pub(crate) use clear_button::clear_button;
 pub use content_type::InputContentType;
+pub use editor_input::{EditorInput, EditorMetrics};
 /// 折叠/行号布局常量，仅 `editor/` 覆盖层使用（`editor` feature 门控）。
 #[cfg(feature = "editor")]
 pub(crate) use element::{FOLD_ICON_HITBOX_WIDTH, LINE_NUMBER_RIGHT_MARGIN};
